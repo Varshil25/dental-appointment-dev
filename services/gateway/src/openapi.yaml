@@ -1,0 +1,718 @@
+openapi: 3.0.3
+info:
+  title: Dental Clinic Appointment API
+  version: "1.0.0"
+  description: >
+    Public API surface for the dental appointment booking system, served
+    behind the gateway. Internally this fans out to independent
+    microservices (patient, dentist, appointment, reminder, notification,
+    report) — but every route below is reached the same way it always was,
+    as a single relative `/api/*` origin.
+servers:
+  - url: /api
+    description: Through the gateway (relative — works from any host it's deployed behind)
+  - url: http://localhost:4000/api
+    description: Local dev
+
+tags:
+  - name: Health
+  - name: Patients
+  - name: Dentists
+  - name: Appointments
+  - name: Reminders
+  - name: Reports
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Aggregated health of the gateway and every backend service
+      responses:
+        "200":
+          description: All backend services reachable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+        "503":
+          description: One or more backend services unreachable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+  /patients:
+    get:
+      tags: [Patients]
+      summary: List / search patients
+      parameters:
+        - name: q
+          in: query
+          description: Free-text search over name, email, phone
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Patient" }
+    post:
+      tags: [Patients]
+      summary: Create a patient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatientInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400":
+          description: name and email are required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /patients/{id}:
+    get:
+      tags: [Patients]
+      summary: Get a patient, including their appointment history
+      parameters:
+        - $ref: "#/components/parameters/PatientId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PatientWithHistory" }
+        "404":
+          description: patient not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    put:
+      tags: [Patients]
+      summary: Update a patient
+      parameters:
+        - $ref: "#/components/parameters/PatientId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatientInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400":
+          description: name and email are required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: patient not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /dentists:
+    get:
+      tags: [Dentists]
+      summary: List dentists
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Dentist" }
+    post:
+      tags: [Dentists]
+      summary: Create a dentist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DentistInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dentist" }
+        "400":
+          description: Invalid name / slot_minutes / working hours
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /dentists/{id}/slots:
+    get:
+      tags: [Dentists]
+      summary: Bookable slots for a dentist on a given day
+      parameters:
+        - $ref: "#/components/parameters/DentistId"
+        - name: date
+          in: query
+          required: true
+          description: YYYY-MM-DD, interpreted in server-local time
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dentist: { $ref: "#/components/schemas/Dentist" }
+                  date: { type: string, format: date }
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/Slot" }
+        "400":
+          description: date=YYYY-MM-DD is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: dentist not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: could not check dentist availability, try again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /appointments:
+    get:
+      tags: [Appointments]
+      summary: List appointments
+      parameters:
+        - name: status
+          in: query
+          description: Comma-separated statuses
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: dentistId
+          in: query
+          schema: { type: integer }
+        - name: patientId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Appointment" }
+    post:
+      tags: [Appointments]
+      summary: Book an appointment
+      description: >
+        Validates patient_id/dentist_id against patient-/dentist-service
+        (fails closed with 503 if either is unreachable), checks for a
+        conflicting slot (409), schedules reminders, and fires a
+        confirmation email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingInput" }
+      responses:
+        "201":
+          description: Booked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "400":
+          description: Invalid patient_id/dentist_id/time, or time in the past
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: that slot is already booked (double-booking prevented)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: unable to validate patient/dentist right now, please retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /appointments/{id}:
+    get:
+      tags: [Appointments]
+      summary: Get one appointment
+      parameters:
+        - $ref: "#/components/parameters/AppointmentId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "404":
+          description: appointment not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /appointments/{id}/reschedule:
+    patch:
+      tags: [Appointments]
+      summary: Move a booked appointment to a new time
+      description: Re-issues reminders for the new time.
+      parameters:
+        - $ref: "#/components/parameters/AppointmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RescheduleInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "400":
+          description: Not booked, invalid time, or time in the past
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: appointment not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: that slot is already booked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: unable to validate dentist right now, please retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /appointments/{id}/cancel:
+    patch:
+      tags: [Appointments]
+      summary: Cancel an appointment
+      description: Voids pending reminders and sends a cancellation email.
+      parameters:
+        - $ref: "#/components/parameters/AppointmentId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "400":
+          description: already cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: appointment not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /appointments/{id}/status:
+    patch:
+      tags: [Appointments]
+      summary: Set appointment status
+      parameters:
+        - $ref: "#/components/parameters/AppointmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [booked, completed, no_show]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "400":
+          description: invalid status value
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: appointment not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /appointments/{id}/follow-up:
+    post:
+      tags: [Appointments]
+      summary: Book a follow-up linked to a completed/previous appointment
+      parameters:
+        - $ref: "#/components/parameters/AppointmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FollowUpInput" }
+      responses:
+        "201":
+          description: Booked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+        "400":
+          description: Invalid dentist_id/time, or time in the past
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: appointment not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: that slot is already booked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: unable to validate patient/dentist right now, please retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /reminders:
+    get:
+      tags: [Reminders]
+      summary: Reminder log
+      parameters:
+        - name: appointmentId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Reminder" }
+
+  /reminders/{id}/send:
+    post:
+      tags: [Reminders]
+      summary: Send a reminder immediately (demo helper — doesn't wait for the scheduled time)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SendResult" }
+        "400":
+          description: Send failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SendResult" }
+
+  /reports/summary:
+    get:
+      tags: [Reports]
+      summary: Clinic-wide reporting metrics
+      description: >
+        Composed live from every other service (no local database) — fails
+        with 503 if any of them is unreachable, since a partial dashboard
+        number would be worse than a visible error.
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportSummary" }
+        "503":
+          description: report data temporarily unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /reports/summary/pdf:
+    get:
+      tags: [Reports]
+      summary: Same report as /reports/summary, as a downloadable PDF
+      description: >
+        Composes the same data as GET /reports/summary and renders it as a
+        formatted PDF (clinic header, summary stats, status breakdown,
+        per-dentist load) instead of JSON — used by the frontend dashboard's
+        "Download PDF" button.
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "503":
+          description: report data temporarily unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  parameters:
+    PatientId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    DentistId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    AppointmentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    HealthStatus:
+      type: object
+      properties:
+        ok: { type: boolean }
+        clinic:
+          type: object
+          properties:
+            name: { type: string }
+        services:
+          type: object
+          additionalProperties: { type: boolean }
+          example: { patient: true, dentist: true, appointment: true, reminder: true, report: true }
+
+    Patient:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        dob: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    PatientWithHistory:
+      allOf:
+        - $ref: "#/components/schemas/Patient"
+        - type: object
+          properties:
+            appointments:
+              type: array
+              items: { $ref: "#/components/schemas/Appointment" }
+
+    PatientInput:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        dob: { type: string, format: date }
+        notes: { type: string }
+
+    Dentist:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        specialty: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        work_start: { type: integer, description: Hour of day, 24h, example: 9 }
+        work_end: { type: integer, description: Hour of day, 24h, example: 17 }
+        slot_minutes: { type: integer, example: 30 }
+
+    DentistInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        specialty: { type: string }
+        email: { type: string }
+        work_start: { type: integer, default: 9 }
+        work_end: { type: integer, default: 17 }
+        slot_minutes: { type: integer, default: 30, description: Must be > 0 }
+
+    Slot:
+      type: object
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        available: { type: boolean }
+
+    Appointment:
+      type: object
+      properties:
+        id: { type: integer }
+        patient_id: { type: integer }
+        dentist_id: { type: integer }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time }
+        status: { type: string, enum: [booked, completed, cancelled, no_show] }
+        reason: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        follow_up_of: { type: integer, nullable: true }
+        cancel_reason: { type: string, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        patient_name: { type: string, nullable: true, description: Composed from patient-service }
+        patient_email: { type: string, nullable: true, description: Composed from patient-service }
+        patient_phone: { type: string, nullable: true, description: Composed from patient-service }
+        dentist_name: { type: string, nullable: true, description: Composed from dentist-service }
+
+    BookingInput:
+      type: object
+      required: [patient_id, dentist_id, start]
+      properties:
+        patient_id: { type: integer }
+        dentist_id: { type: integer }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time, description: "Optional — defaults from duration_minutes / the dentist's slot length" }
+        duration_minutes: { type: integer }
+        reason: { type: string }
+        notes: { type: string }
+
+    RescheduleInput:
+      type: object
+      required: [start]
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        duration_minutes: { type: integer }
+
+    FollowUpInput:
+      type: object
+      required: [start]
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        duration_minutes: { type: integer }
+        dentist_id: { type: integer, description: Defaults to the parent appointment's dentist }
+        reason: { type: string }
+        notes: { type: string }
+
+    Reminder:
+      type: object
+      properties:
+        id: { type: integer }
+        appointment_id: { type: integer }
+        channel: { type: string, enum: [email, sms] }
+        offset_hours: { type: number }
+        scheduled_for: { type: string, format: date-time }
+        status: { type: string, enum: [pending, sending, sent, failed, skipped] }
+        sent_at: { type: string, format: date-time, nullable: true }
+        detail: { type: string, nullable: true, description: Preview URL or error message }
+        patient_email: { type: string }
+        patient_name: { type: string }
+        dentist_name: { type: string, nullable: true }
+        appt_start_time: { type: string, format: date-time }
+        appt_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    SendResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        detail: { type: string, description: Preview URL (test mode) or SMTP message id / error }
+
+    ReportSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        counts:
+          type: object
+          properties:
+            booked: { type: integer }
+            completed: { type: integer }
+            cancelled: { type: integer }
+            no_show: { type: integer }
+        noShowRate: { type: number, description: Percentage of finished appointments }
+        cancellationRate: { type: number, description: Percentage of finished appointments }
+        upcoming: { type: integer }
+        remindersSent: { type: integer }
+        patients: { type: integer }
+        perDentist:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              kept: { type: integer }
+              no_shows: { type: integer }
+              cancelled: { type: integer }
+        today: { type: integer, description: Appointments starting today }
+        thisMonth: { type: integer, description: Appointments starting in the current calendar month }
+        dailySeries:
+          type: array
+          description: Zero-filled daily appointment counts for the last 14 days
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              count: { type: integer }

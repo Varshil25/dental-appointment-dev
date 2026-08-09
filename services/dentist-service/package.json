@@ -1,0 +1,21 @@
+{
+  "name": "dentist-service",
+  "version": "1.0.0",
+  "description": "Owns dentist profiles, working hours and slot availability",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ioredis": "^6.0.0",
+    "pg": "^8.13.1"
+  }
+}

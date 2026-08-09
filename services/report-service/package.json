@@ -1,0 +1,21 @@
+{
+  "name": "report-service",
+  "version": "1.0.0",
+  "description": "Composes clinic reporting data across the other services",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ioredis": "^6.0.0",
+    "pdfkit": "^0.15.1"
+  }
+}

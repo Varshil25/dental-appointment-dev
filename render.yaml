@@ -1,0 +1,241 @@
+# Render Blueprint — deploys every microservice + the frontend in one go.
+#
+# NOTE: Render's Blueprint schema evolves; double-check field names here
+# (especially `fromService`/`property`, and whether static sites still use
+# `type: static` vs `runtime: static`) against Render's current render.yaml
+# reference before deploying: https://render.com/docs/blueprint-spec
+#
+# Data lives in Neon Postgres now (see DATABASE_URL below), not on a local
+# disk, so none of these services need an attached disk. patient/dentist/
+# appointment/reminder-service are still kept on `starter` rather than
+# `free`, though: Render's free instance type spins down after 15 minutes
+# idle, which for reminder-service specifically would silently stop the
+# node-cron reminder dispatch loop from firing — defeating the whole
+# "automated reminders" feature. notification/report/gateway are left on
+# `free` since nothing breaks if they cold-start on the next request.
+#
+# DATABASE_URL values below are placeholders — replace each with that
+# service's own Neon connection string (one Neon project, 4 separate
+# databases: patient_service / dentist_service / appointment_service /
+# reminder_service) via the Render dashboard, not by editing this file,
+# since they're secrets.
+#
+# REDIS_URL (also a secret, set via the dashboard) is optional on every
+# service that declares it — each one fails open and works identically
+# (just without the read-through cache speedup) if it's left unset. One
+# shared Redis instance is fine across all 5 services; cache keys are
+# namespaced per service (e.g. "report-service:summary:...").
+
+services:
+  - type: web
+    name: patient-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: services/patient-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: APPOINTMENT_SERVICE_URL
+        fromService: { name: appointment-service, type: web, property: hostport }
+      - key: DENTIST_SERVICE_URL
+        fromService: { name: dentist-service, type: web, property: hostport }
+
+  - type: web
+    name: dentist-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: services/dentist-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: APPOINTMENT_SERVICE_URL
+        fromService: { name: appointment-service, type: web, property: hostport }
+
+  - type: web
+    name: appointment-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: services/appointment-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: PATIENT_SERVICE_URL
+        fromService: { name: patient-service, type: web, property: hostport }
+      - key: DENTIST_SERVICE_URL
+        fromService: { name: dentist-service, type: web, property: hostport }
+      - key: REMINDER_SERVICE_URL
+        fromService: { name: reminder-service, type: web, property: hostport }
+      - key: NOTIFICATION_SERVICE_URL
+        fromService: { name: notification-service, type: web, property: hostport }
+      - key: CLINIC_NAME
+        value: Bright Smile Dental
+      - key: CLINIC_PHONE
+        value: (555) 012-3456
+      - key: CLINIC_ADDRESS
+        value: 12 Riverside Ave, Springfield
+      - key: SEED_TOKEN
+        generateValue: true
+
+  - type: web
+    name: reminder-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: services/reminder-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: NOTIFICATION_SERVICE_URL
+        fromService: { name: notification-service, type: web, property: hostport }
+      - key: REMINDER_OFFSETS_HOURS
+        value: "48,2"
+      - key: REMINDER_CRON
+        value: "* * * * *"
+      - key: CLINIC_NAME
+        value: Bright Smile Dental
+      - key: CLINIC_PHONE
+        value: (555) 012-3456
+      - key: CLINIC_ADDRESS
+        value: 12 Riverside Ave, Springfield
+
+  - type: web
+    name: notification-service
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: services/notification-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      # Leave SMTP_* blank to fall back to an Ethereal test inbox (preview
+      # URLs logged, nothing reaches real patients). Fill in real SMTP
+      # (e.g. Mailtrap or a Gmail App Password) to send real email.
+      - key: SMTP_HOST
+        value: ""
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        value: ""
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        value: "Bright Smile Dental <no-reply@brightsmile.example>"
+      # Twilio SMS — optional, same fail-soft posture as SMTP above: leave
+      # blank and SMS sending is silently disabled (emails keep working).
+      # TWILIO_FROM_NUMBER must be a number this Twilio account owns.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+
+  - type: web
+    name: report-service
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: services/report-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: REDIS_URL
+        sync: false
+      - key: PATIENT_SERVICE_URL
+        fromService: { name: patient-service, type: web, property: hostport }
+      - key: DENTIST_SERVICE_URL
+        fromService: { name: dentist-service, type: web, property: hostport }
+      - key: APPOINTMENT_SERVICE_URL
+        fromService: { name: appointment-service, type: web, property: hostport }
+      - key: REMINDER_SERVICE_URL
+        fromService: { name: reminder-service, type: web, property: hostport }
+      - key: CLINIC_NAME
+        value: Bright Smile Dental
+      - key: CLINIC_PHONE
+        value: (555) 012-3456
+      - key: CLINIC_ADDRESS
+        value: 12 Riverside Ave, Springfield
+
+  - type: web
+    name: gateway
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: services/gateway
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: PATIENT_SERVICE_URL
+        fromService: { name: patient-service, type: web, property: hostport }
+      - key: DENTIST_SERVICE_URL
+        fromService: { name: dentist-service, type: web, property: hostport }
+      - key: APPOINTMENT_SERVICE_URL
+        fromService: { name: appointment-service, type: web, property: hostport }
+      - key: REMINDER_SERVICE_URL
+        fromService: { name: reminder-service, type: web, property: hostport }
+      - key: REPORT_SERVICE_URL
+        fromService: { name: report-service, type: web, property: hostport }
+      - key: CLINIC_NAME
+        value: Bright Smile Dental
+
+  # Static frontend. The /api/* rewrite below is what makes the "frontend
+  # calls one relative origin unchanged" contract work once frontend and
+  # gateway are separate Render services — it MUST come before the SPA
+  # catch-all, and its destination must match the gateway's actual public
+  # URL (predictable as https://<gateway name>.onrender.com unless you've
+  # attached a custom domain).
+  - type: web
+    name: frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: out
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://gateway.onrender.com/api/:splat
+      - type: rewrite
+        source: /*
+        destination: /index.html
