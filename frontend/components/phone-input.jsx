@@ -12,6 +12,11 @@ const flag = (iso2) =>
 
 const SORTED = [...COUNTRY_CODES].sort((a, b) => a[1].localeCompare(b[1]));
 
+// Dial codes aren't unique (e.g. +1 is shared by US/CA, +7 by RU/KZ), so the
+// Select tracks the unique iso2 as its value and looks up the dial code from
+// here rather than using the dial code itself as the item value.
+const DIAL_BY_ISO2 = new Map(COUNTRY_CODES.map(([iso2, , dial]) => [iso2, dial]));
+
 // Splits a stored "+<dial><number>" value into its dial code (matched
 // against the known list, longest prefix first so e.g. +1876 (Jamaica)
 // isn't mistaken for +1 (US/Canada)) and the remaining local digits.
@@ -29,20 +34,21 @@ function splitValue(value) {
 // the same shape the backend's phone validation expects.
 export default function PhoneInput({ value, onChange, placeholder }) {
   const initial = useMemo(() => splitValue(value), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [dial, setDial] = useState(initial.dial);
+  const [iso2, setIso2] = useState(initial.iso2);
   const [local, setLocal] = useState(initial.local);
 
-  const emit = (nextDial, nextLocal) => {
+  const emit = (nextIso2, nextLocal) => {
     const digits = nextLocal.replace(/\D/g, '');
-    onChange(digits ? `+${nextDial}${digits}` : '');
+    const dial = DIAL_BY_ISO2.get(nextIso2) || '1';
+    onChange(digits ? `+${dial}${digits}` : '');
   };
 
   return (
     <div className="flex gap-2">
       <Select
-        value={dial}
+        value={iso2}
         onValueChange={(v) => {
-          setDial(v);
+          setIso2(v);
           emit(v, local);
         }}
       >
@@ -50,9 +56,9 @@ export default function PhoneInput({ value, onChange, placeholder }) {
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="max-h-72">
-          {SORTED.map(([iso2, name, code]) => (
-            <SelectItem key={`${iso2}-${code}`} value={code}>
-              {flag(iso2)} +{code} {name}
+          {SORTED.map(([optIso2, name, code]) => (
+            <SelectItem key={optIso2} value={optIso2}>
+              {flag(optIso2)} +{code} {name}
             </SelectItem>
           ))}
         </SelectContent>
@@ -66,7 +72,7 @@ export default function PhoneInput({ value, onChange, placeholder }) {
         onChange={(e) => {
           const digits = e.target.value.replace(/\D/g, '');
           setLocal(digits);
-          emit(dial, digits);
+          emit(iso2, digits);
         }}
       />
     </div>

@@ -12,6 +12,10 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// Neon closes idle connections; without this listener that shows up as an
+// unhandled 'error' event on the pool and takes the whole process down.
+pool.on('error', (err) => console.error('[db] idle client error:', err.message));
+
 // Reminders no longer FK into an appointments table we don't own — instead
 // each row carries a denormalized snapshot of what it needs to send an
 // email, pushed by appointment-service at schedule time. This keeps the

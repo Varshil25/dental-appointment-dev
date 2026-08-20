@@ -12,8 +12,13 @@ const urls = {
   dentist: process.env.DENTIST_SERVICE_URL || 'http://localhost:4002',
   appointment: process.env.APPOINTMENT_SERVICE_URL || 'http://localhost:4003',
   reminder: process.env.REMINDER_SERVICE_URL || 'http://localhost:4004',
+  auth: process.env.AUTH_SERVICE_URL || 'http://localhost:4007',
 };
 const seedToken = process.env.SEED_TOKEN || 'dev-seed-token';
+// auth-service has its own independent SEED_TOKEN env var — defaults to the
+// same 'dev-seed-token' value as appointment-service's for local dev, so
+// this reuses `seedToken` unless you've set the two differently.
+const authSeedToken = process.env.AUTH_SEED_TOKEN || seedToken;
 
 async function postJSON(url, body, extraHeaders = {}) {
   const res = await fetch(url, {
@@ -32,28 +37,63 @@ async function getJSON(url) {
   return res.json();
 }
 
+async function putJSON(url, body) {
+  const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`PUT ${url} -> ${res.status}: ${data.error || JSON.stringify(data)}`);
+  return data;
+}
+
 console.log('Seeding sample data across services…');
 
-// 1. Dentists.
+// 1. Dentists — varied weekly schedules so the availability editor and the
+// calendar/slot-picker have something interesting to show immediately:
+// Amara is a standard Mon-Fri dentist, Ben works weekdays but cuts Friday
+// short, Priya works every day including weekends.
 const dentistDefs = [
-  ['Dr. Amara Osei', 'General Dentistry', 'amara@brightsmile.example', 9, 17, 30],
-  ['Dr. Ben Cohen', 'Orthodontics', 'ben@brightsmile.example', 10, 18, 45],
-  ['Dr. Priya Nair', 'Endodontics', 'priya@brightsmile.example', 8, 14, 30],
+  {
+    name: 'Dr. Amara Osei', specialty: 'General Dentistry', email: 'amara@brightsmile.example',
+    phone: '+15550101', work_start: 9, work_end: 17, slot_minutes: 30, status: 'active',
+    dayOverrides: { 0: { is_available: false }, 6: { is_available: false } }, // off weekends
+  },
+  {
+    name: 'Dr. Ben Cohen', specialty: 'Orthodontics', email: 'ben@brightsmile.example',
+    phone: '+15550102', work_start: 10, work_end: 18, slot_minutes: 45, status: 'active',
+    dayOverrides: {
+      0: { is_available: false }, // off Sunday
+      5: { work_start: 10, work_end: 14 }, // shorter Friday
+      6: { is_available: false }, // off Saturday
+    },
+  },
+  {
+    name: 'Dr. Priya Nair', specialty: 'Endodontics', email: 'priya@brightsmile.example',
+    phone: '+15550103', work_start: 8, work_end: 14, slot_minutes: 30, status: 'active',
+    dayOverrides: {}, // works every day, including weekends
+  },
 ];
 const dentistIds = [];
-for (const [name, specialty, email, work_start, work_end, slot_minutes] of dentistDefs) {
-  const d = await postJSON(`${urls.dentist}/`, { name, specialty, email, work_start, work_end, slot_minutes });
+for (const { dayOverrides, ...body } of dentistDefs) {
+  const d = await postJSON(`${urls.dentist}/`, body);
   dentistIds.push(d.id);
+
+  const days = [0, 1, 2, 3, 4, 5, 6].map((day_of_week) => ({
+    day_of_week,
+    is_available: true,
+    work_start: body.work_start,
+    work_end: body.work_end,
+    ...dayOverrides[day_of_week],
+  }));
+  await putJSON(`${urls.dentist}/${d.id}/availability`, { days });
 }
 
 // 2. Patients.
 const patientDefs = [
   // First patient uses your own email so real reminder emails land in your inbox.
-  ['Varshil (you)', 'varshilce@gmail.com', '555-0100', '1998-04-12', 'Prefers morning slots.'],
-  ['Maria Gomez', 'maria.gomez@example.com', '555-0111', '1985-09-30', 'Sensitive to anesthetic.'],
-  ['James Okafor', 'james.okafor@example.com', '555-0122', '1972-01-05', 'Wears a crown, upper left.'],
-  ['Lily Chen', 'lily.chen@example.com', '555-0133', '2005-06-21', 'Braces — ortho follow-ups.'],
-  ['Tom Bianchi', 'tom.bianchi@example.com', '555-0144', '1990-11-11', ''],
+  ['Varshil (you)', 'varshilce@gmail.com', '+15550100', '1998-04-12', 'Prefers morning slots.'],
+  ['Maria Gomez', 'maria.gomez@example.com', '+15550111', '1985-09-30', 'Sensitive to anesthetic.'],
+  ['James Okafor', 'james.okafor@example.com', '+15550122', '1972-01-05', 'Wears a crown, upper left.'],
+  ['Lily Chen', 'lily.chen@example.com', '+15550133', '2005-06-21', 'Braces — ortho follow-ups.'],
+  ['Tom Bianchi', 'tom.bianchi@example.com', '+15550144', '1990-11-11', ''],
 ];
 const patientIds = [];
 const patientById = new Map();
@@ -119,7 +159,43 @@ await bookUpcoming(3, 0, at(3, 15), 30, 'Whitening consultation');
 
 const reminders = await getJSON(`${urls.reminder}/`);
 
+// 5. Staff accounts (admin + doctor) for auth-service — created via the
+// token-gated bootstrap endpoint (POST /users itself is admin-only, which
+// would otherwise be a chicken-and-egg problem for the very first admin).
+// Uses your own email, with Gmail plus-addressing to keep the two accounts
+// distinct, so the real OTP/reset emails land in your own inbox — same
+// reasoning as the first patient above.
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'nbnabhay@gmail.com';
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'Admin1234';
+const DOCTOR_EMAIL = process.env.SEED_DOCTOR_EMAIL || 'abhaymgajjar@gmail.com';
+const DOCTOR_PASSWORD = process.env.SEED_DOCTOR_PASSWORD || 'Doctor1234';
+const doctorDentistName = dentistDefs[0].name; // linked to dentistIds[0] below
+
+await postJSON(
+  `${urls.auth}/internal/seed-user`,
+  { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: 'admin', name: 'Clinic Admin' },
+  { 'X-Seed-Token': authSeedToken }
+);
+await postJSON(
+  `${urls.auth}/internal/seed-user`,
+  { email: DOCTOR_EMAIL, password: DOCTOR_PASSWORD, role: 'doctor', name: doctorDentistName, dentist_id: dentistIds[0] },
+  { 'X-Seed-Token': authSeedToken }
+);
+
 console.log(
   `Done: ${dentistIds.length} dentists, ${patientIds.length} patients, ` +
     `${appointmentCount} appointments, ${reminders.length} reminders.`
 );
+
+console.log(`
+──────────────────────────────────────────────────────────
+  Staff login — http://localhost:3000/login
+──────────────────────────────────────────────────────────
+  Admin:   ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}
+  Doctor:  ${DOCTOR_EMAIL} / ${DOCTOR_PASSWORD}  (linked to ${doctorDentistName})
+
+  Login is two-step: password first, then a 6-digit code
+  emailed to the address above (both route to your real
+  inbox via Gmail's +addressing).
+──────────────────────────────────────────────────────────
+`);

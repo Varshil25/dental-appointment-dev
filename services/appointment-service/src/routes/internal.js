@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { config } from '../config.js';
-import { listAppointmentsLocal } from '../queries.js';
+import { listAppointmentsLocal, composeNames } from '../queries.js';
 import { hasConflict } from '../slots.js';
 import { scheduleReminders } from '../clients/reminderServiceClient.js';
 import { cached, invalidateAll } from '../cache.js';
@@ -24,6 +24,31 @@ router.get('/appointments', async (req, res) => {
   };
   const rows = await cached(`internal:list:${JSON.stringify(filters)}`, 10, () => listAppointmentsLocal(filters));
   res.json(rows);
+});
+
+// Future booked appointments for one dentist, with the patient's name
+// composed in — used by dentist-service to warn an admin before
+// deactivating a dentist who still has upcoming bookings. Not cached:
+// this gates a destructive-ish admin decision, so it must read the
+// current state rather than a stale one.
+router.get('/appointments/future-booked', async (req, res) => {
+  const dentistId = req.query.dentistId;
+  if (!dentistId) return res.status(400).json({ error: 'dentistId is required' });
+  const rows = await listAppointmentsLocal({
+    status: 'booked',
+    dentistId,
+    from: new Date().toISOString(),
+  });
+  const composed = await composeNames(rows);
+  res.json(
+    composed.map((a) => ({
+      id: a.id,
+      start_time: a.start_time,
+      end_time: a.end_time,
+      patient_name: a.patient_name,
+      reason: a.reason,
+    }))
+  );
 });
 
 // Status breakdown + upcoming count for report-service.

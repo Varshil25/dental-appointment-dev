@@ -1,0 +1,81 @@
+/* Restyles react-big-calendar's default grid to match the app's shadcn
+   theme tokens (from app/globals.css), instead of RBC's built-in blue
+   theme. Uses the same CSS custom properties the rest of the UI uses, so
+   this stays correct in dark mode automatically. */
+
+.rbc-calendar {
+  font-family: var(--font-sans);
+  color: var(--foreground);
+}
+
+.rbc-month-view,
+.rbc-time-view,
+.rbc-agenda-view {
+  border-color: var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.rbc-header,
+.rbc-time-header-content,
+.rbc-time-content,
+.rbc-day-bg + .rbc-day-bg,
+.rbc-month-row + .rbc-month-row,
+.rbc-header + .rbc-header,
+.rbc-time-content > * + * > *,
+.rbc-timeslot-group,
+.rbc-time-header.rbc-overflowing {
+  border-color: var(--border);
+}
+
+.rbc-header {
+  padding: 0.375rem 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.rbc-off-range-bg {
+  background: var(--muted);
+}
+
+.rbc-off-range {
+  color: var(--muted-foreground);
+}
+
+.rbc-today {
+  background-color: color-mix(in oklch, var(--primary), transparent 92%);
+}
+
+.rbc-event {
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.rbc-event:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.rbc-show-more {
+  background: transparent;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.rbc-current-time-indicator {
+  background-color: var(--destructive);
+}
+
+.rbc-time-gutter .rbc-timeslot-group,
+.rbc-time-slot {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.rbc-agenda-table,
+.rbc-agenda-table tbody > tr > td,
+.rbc-agenda-table thead > tr > th {
+  border-color: var(--border);
+}

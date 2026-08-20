@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, fmtDateTime } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/use-toast';
 import { downloadBlob } from '@/lib/download-blob';
 import { StatTile } from '@/components/stat-tile';
@@ -63,14 +64,99 @@ function DashboardSkeleton() {
   );
 }
 
+// Doctors don't get the clinic-wide dashboard — GET /api/reports/summary is
+// admin-only at the gateway (full clinic KPIs are out of scope for a
+// single doctor's view per the brief), so this renders a much smaller
+// "my schedule" summary built entirely from their own scoped appointment
+// list instead of a second, doctor-flavored reports endpoint.
+function DoctorDashboard({ user }) {
+  const [upcoming, setUpcoming] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const now = new Date();
+    api
+      .listAppointments({ status: 'booked', dentistId: user.dentist_id, from: now.toISOString() })
+      .then(setUpcoming)
+      .finally(() => setLoading(false));
+  }, [user.dentist_id]);
+
+  const todayCount = upcoming.filter((a) => {
+    const d = new Date(a.start_time);
+    const now = new Date();
+    return d.toDateString() === now.toDateString();
+  }).length;
+
+  if (loading) return <DashboardSkeleton />;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Welcome, {user.name || user.email}</h1>
+        <p className="text-muted-foreground">Your schedule at a glance.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 max-w-md">
+        <StatTile label="Today" value={todayCount} sub="appointments today" />
+        <StatTile label="Upcoming" value={upcoming.length} sub="booked & in the future" />
+      </div>
+
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <CardTitle>Your upcoming appointments</CardTitle>
+          <Link href="/appointments" className={buttonVariants({ variant: 'link' })}>
+            View all →
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {upcoming.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              No upcoming appointments.{' '}
+              <Link href="/book" className="text-primary font-semibold hover:underline">
+                Book one →
+              </Link>
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Patient</TableHead>
+                  <TableHead>Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {upcoming.slice(0, 10).map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>{fmtDateTime(a.start_time)}</TableCell>
+                    <TableCell>{a.patient_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{a.reason || '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
+  const { user } = useAuth();
   const notify = useToast();
   const [summary, setSummary] = useState(null);
   const [upcoming, setUpcoming] = useState([]);
   const [err, setErr] = useState('');
   const [downloading, setDownloading] = useState(false);
 
+  // GET /api/reports/summary is admin-only at the gateway — never call it
+  // for a doctor (would just 403). Hook order stays fixed across renders
+  // (this effect and the state above always run); the role check below
+  // just short-circuits what the effect does, and the early return further
+  // down skips rendering the admin-only JSX entirely.
   useEffect(() => {
+    if (user?.role !== 'admin') return;
     const now = new Date().toISOString();
     Promise.all([api.summary(), api.listAppointments({ status: 'booked', from: now })])
       .then(([s, appts]) => {
@@ -78,7 +164,9 @@ export default function DashboardPage() {
         setUpcoming(appts.slice(0, 6));
       })
       .catch((e) => setErr(e.message));
-  }, []);
+  }, [user?.role]);
+
+  if (user?.role === 'doctor') return <DoctorDashboard user={user} />;
 
   async function downloadPdf() {
     setDownloading(true);

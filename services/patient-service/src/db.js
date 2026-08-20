@@ -15,6 +15,10 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// Neon closes idle connections; without this listener that shows up as an
+// unhandled 'error' event on the pool and takes the whole process down.
+pool.on('error', (err) => console.error('[db] idle client error:', err.message));
+
 // Top-level await: server.js's `import './db.js'` waits for this to settle
 // before the rest of the module graph runs, so routes never see a missing table.
 await pool.query(`

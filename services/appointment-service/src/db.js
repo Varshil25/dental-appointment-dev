@@ -12,6 +12,10 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// Neon closes idle connections; without this listener that shows up as an
+// unhandled 'error' event on the pool and takes the whole process down.
+pool.on('error', (err) => console.error('[db] idle client error:', err.message));
+
 // No FKs to patients/dentists — those live in other services' databases now.
 // Referential integrity is enforced at booking time via HTTP validation
 // (see clients/patientServiceClient.js, clients/dentistServiceClient.js).

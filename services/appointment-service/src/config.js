@@ -10,7 +10,7 @@ export const config = {
   redisUrl: process.env.REDIS_URL || '',
   clinic: {
     name: process.env.CLINIC_NAME || 'Bright Smile Dental',
-    phone: process.env.CLINIC_PHONE || '(555) 012-3456',
+    phone: process.env.CLINIC_PHONE || '+61 470375410',
     address: process.env.CLINIC_ADDRESS || '12 Riverside Ave, Springfield',
   },
   seedToken: process.env.SEED_TOKEN || 'dev-seed-token',

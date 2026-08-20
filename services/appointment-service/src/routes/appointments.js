@@ -54,6 +54,10 @@ async function loadPatientAndDentist(res, patientId, dentistId) {
   }
   if (!patient) { res.status(400).json({ error: 'unknown patient_id' }); return null; }
   if (!dentist) { res.status(400).json({ error: 'unknown dentist_id' }); return null; }
+  if (dentist.status === 'inactive') {
+    res.status(400).json({ error: 'this dentist is not currently accepting appointments' });
+    return null;
+  }
   return { patient, dentist };
 }
 
@@ -75,8 +79,37 @@ router.get('/:id', async (req, res) => {
   res.json(appt);
 });
 
+// Public, unauthenticated lookup for the patient-facing "manage my
+// appointment" page — reference (appointment id) alone is a guessable
+// sequential integer, so this also requires the patient's own email or
+// phone on file to match before returning anything. Same generic error for
+// "no such id" and "id exists but contact doesn't match" so a caller can't
+// use the response to enumerate which bookings exist.
+const normalizeForCompare = (s) => String(s).trim().toLowerCase().replace(/[\s().-]/g, '');
+
+router.post('/lookup', async (req, res) => {
+  const { id, contact } = req.body;
+  if (!id || !contact) return res.status(400).json({ error: 'id and contact (email or phone) are required' });
+
+  const NOT_FOUND = { error: 'no matching appointment found — check your reference and contact details' };
+  const appt = await getAppointment(id);
+  if (!appt || !appt.patient_email) return res.status(404).json(NOT_FOUND);
+
+  const given = normalizeForCompare(contact);
+  const matchesEmail = appt.patient_email && normalizeForCompare(appt.patient_email) === given;
+  const matchesPhone = appt.patient_phone && normalizeForCompare(appt.patient_phone) === given;
+  if (!matchesEmail && !matchesPhone) return res.status(404).json(NOT_FOUND);
+
+  res.json(appt);
+});
+
 // Book a new appointment.
 router.post('/', async (req, res) => {
+  // Honeypot: a hidden field real patients never see or fill. Any value
+  // here means a bot filled every field it could find — reject quietly
+  // rather than let it reach patient/dentist validation.
+  if (req.body.website) return res.status(400).json({ error: 'invalid submission' });
+
   const { patient_id, dentist_id, reason, notes } = req.body;
   const loaded = await loadPatientAndDentist(res, patient_id, dentist_id);
   if (!loaded) return;

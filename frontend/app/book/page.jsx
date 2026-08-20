@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, fmtDateTime, fmtTime } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/use-toast';
 import { initials } from '@/lib/initials';
 import PhoneInput from '@/components/phone-input';
@@ -21,6 +22,8 @@ import { User, Stethoscope, CalendarDays, CheckCircle2, Clock } from 'lucide-rea
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export default function BookPage() {
+  const { user } = useAuth();
+  const isDoctor = user?.role === 'doctor';
   const notify = useToast();
   const [patients, setPatients] = useState([]);
   const [dentists, setDentists] = useState([]);
@@ -42,10 +45,20 @@ export default function BookPage() {
   const loadPatients = () => api.listPatients().then(setPatients);
   useEffect(() => {
     loadPatients();
-    api.listDentists().then((d) => {
-      setDentists(d);
-      if (d[0]) setDentistId(String(d[0].id));
+    api.listDentists().then((all) => {
+      // Inactive dentists aren't bookable (appointment-service rejects them
+      // anyway) — don't offer them in the picker at all.
+      const bookable = all.filter((d) => d.status !== 'inactive');
+      setDentists(bookable);
+      // A doctor booking from the staff dashboard only ever books for
+      // themselves — the underlying POST /api/appointments is public and
+      // doesn't enforce this (see gateway/src/server.js's comment on why),
+      // but locking the picker keeps the UI honest about what a doctor's
+      // account is meant to do.
+      if (isDoctor && user.dentist_id) setDentistId(String(user.dentist_id));
+      else if (bookable[0]) setDentistId(String(bookable[0].id));
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reload slots whenever dentist or date changes.
@@ -174,7 +187,7 @@ export default function BookPage() {
             <CardContent className="space-y-3">
               <div>
                 <Label>Dentist</Label>
-                <Select value={dentistId} onValueChange={setDentistId}>
+                <Select value={dentistId} onValueChange={setDentistId} disabled={isDoctor}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {dentists.map((d) => (

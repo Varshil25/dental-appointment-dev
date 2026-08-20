@@ -16,13 +16,147 @@ servers:
 
 tags:
   - name: Health
+  - name: Auth
   - name: Patients
   - name: Dentists
+  - name: Clinic Profile
   - name: Appointments
   - name: Reminders
   - name: Reports
 
 paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Step 1 of staff login — email + password
+      description: >
+        On success, does NOT return a session — it emails a 6-digit OTP and
+        returns a short-lived `reference` identifying this login attempt for
+        step 2 (verify-otp).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: OTP sent }
+        "401":
+          description: invalid email or password
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Step 2 of staff login — 6-digit code
+      description: On success, issues the real JWT access token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference, otp]
+              properties:
+                reference: { type: string }
+                otp: { type: string }
+      responses:
+        "200": { description: "{ token, user }" }
+        "400":
+          description: invalid or expired code
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /auth/resend-otp:
+    post:
+      tags: [Auth]
+      summary: Resend a fresh code for a login attempt still in progress
+      description: Rate-limited — at most one resend per cooldown window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties: { reference: { type: string } }
+      responses:
+        "200": { description: OTP resent }
+        "429": { description: resend requested too soon }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Who-am-I for the current bearer token
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: current user }
+        "401": { description: missing, invalid, or revoked token }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Client-side token clear (stateless JWT — nothing to revoke server-side)
+      responses:
+        "200": { description: OK }
+
+  /auth/users:
+    post:
+      tags: [Auth]
+      summary: Admin-only — create an admin or doctor account
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, role]
+              properties:
+                email: { type: string }
+                password: { type: string }
+                role: { type: string, enum: [admin, doctor] }
+                name: { type: string }
+                dentist_id: { type: integer, description: required when role=doctor }
+      responses:
+        "201": { description: account created }
+        "403": { description: caller is not an admin }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password reset link
+      description: Always returns a generic confirmation — never reveals whether the email exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string } } }
+      responses:
+        "200": { description: generic confirmation }
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Complete a password reset
+      description: Invalidates the reset token and any existing sessions for that user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token: { type: string }
+                new_password: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: invalid or expired token }
+
   /health:
     get:
       tags: [Health]
@@ -188,6 +322,43 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "503":
           description: could not check dentist availability, try again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /clinic-profile:
+    get:
+      tags: [Clinic Profile]
+      summary: Fetch clinic-wide settings (name, logo, contact info, weekly hours)
+      description: >
+        Public — no auth needed since patient-facing booking pages read this
+        too.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClinicProfile" }
+    put:
+      tags: [Clinic Profile]
+      summary: Update clinic-wide settings
+      description: >
+        Admin-only — requires a Bearer token for a user with role=admin.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClinicProfileInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClinicProfile" }
+        "400":
+          description: Validation error (missing clinic_name, malformed hours, close_time before open_time, ...)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -510,6 +681,12 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   parameters:
     PatientId:
       name: id
@@ -604,6 +781,40 @@ components:
         start: { type: string, format: date-time }
         end: { type: string, format: date-time }
         available: { type: boolean }
+
+    ClinicHour:
+      type: object
+      properties:
+        day_of_week: { type: integer, minimum: 0, maximum: 6, description: "0=Sunday..6=Saturday" }
+        is_closed: { type: boolean }
+        open_time: { type: string, example: "09:00", description: "HH:MM, 24h" }
+        close_time: { type: string, example: "17:00", description: "HH:MM, 24h" }
+
+    ClinicProfile:
+      type: object
+      properties:
+        id: { type: integer }
+        clinic_name: { type: string }
+        logo_url: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
+        hours:
+          type: array
+          items: { $ref: "#/components/schemas/ClinicHour" }
+
+    ClinicProfileInput:
+      type: object
+      required: [clinic_name, hours]
+      properties:
+        clinic_name: { type: string }
+        logo_url: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        hours:
+          type: array
+          description: Must cover all 7 days (0=Sun..6=Sat), each exactly once
+          items: { $ref: "#/components/schemas/ClinicHour" }
 
     Appointment:
       type: object

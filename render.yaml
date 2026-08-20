@@ -66,6 +66,19 @@ services:
         sync: false
       - key: APPOINTMENT_SERVICE_URL
         fromService: { name: appointment-service, type: web, property: hostport }
+      - key: NOTIFICATION_SERVICE_URL
+        fromService: { name: notification-service, type: web, property: hostport }
+      - key: CLINIC_NAME
+        value: Bright Smile Dental
+      - key: CLINIC_PHONE
+        value: (555) 012-3456
+      - key: CLINIC_ADDRESS
+        value: 12 Riverside Ave, Springfield
+      # Inbox that receives the "new website inquiry" notification sent by
+      # the patient-frontend contact form — distinct from notification-
+      # service's MAIL_FROM (the outgoing send-as address).
+      - key: CLINIC_NOTIFY_EMAIL
+        value: front-desk@example.com
 
   - type: web
     name: appointment-service
@@ -167,6 +180,51 @@ services:
         sync: false
 
   - type: web
+    name: auth-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: services/auth-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.9.0
+      - key: DATABASE_URL
+        sync: false
+      # MUST be set to the exact same value as the gateway service's own
+      # JWT_SECRET below — the gateway verifies tokens this service issues
+      # without calling back here (see services/gateway/src/auth.js), so a
+      # mismatch between the two makes every login look invalid at the
+      # gateway even though auth-service issued it correctly. Render can't
+      # share one generated secret across two services in this Blueprint
+      # format, so generate one value yourself and paste it into both
+      # services' dashboards — same reasoning as DATABASE_URL above.
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: DENTIST_SERVICE_URL
+        fromService: { name: dentist-service, type: web, property: hostport }
+      - key: NOTIFICATION_SERVICE_URL
+        fromService: { name: notification-service, type: web, property: hostport }
+      # The staff dashboard's own URL (not patient-frontend) — password
+      # reset emails link to <FRONTEND_URL>/reset-password?token=...; only
+      # staff (admin/doctor) accounts exist, so this always points at the
+      # `frontend` static site below, never `patient-frontend`.
+      - key: FRONTEND_URL
+        value: https://frontend.onrender.com
+      - key: CLINIC_NAME
+        value: Bright Smile Dental
+      - key: CLINIC_PHONE
+        value: (555) 012-3456
+      - key: CLINIC_ADDRESS
+        value: 12 Riverside Ave, Springfield
+      - key: SEED_TOKEN
+        generateValue: true
+
+  - type: web
     name: report-service
     runtime: node
     plan: free
@@ -217,8 +275,19 @@ services:
         fromService: { name: reminder-service, type: web, property: hostport }
       - key: REPORT_SERVICE_URL
         fromService: { name: report-service, type: web, property: hostport }
+      - key: AUTH_SERVICE_URL
+        fromService: { name: auth-service, type: web, property: hostport }
+      # MUST be set to the exact same value pasted into auth-service's own
+      # JWT_SECRET above — see that service's comment for why.
+      - key: JWT_SECRET
+        sync: false
       - key: CLINIC_NAME
         value: Bright Smile Dental
+      # Powers POST /api/chat (the patient-frontend chat widget). Server-side
+      # only — never sent to either frontend. Leave unset to disable the
+      # chatbot (the endpoint 503s instead of the gateway crashing).
+      - key: GEMINI_API_KEY
+        sync: false
 
   # Static frontend. The /api/* rewrite below is what makes the "frontend
   # calls one relative origin unchanged" contract work once frontend and
@@ -230,6 +299,25 @@ services:
     name: frontend
     runtime: static
     rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: out
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://gateway.onrender.com/api/:splat
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # Public patient-facing site — a second, independent static site sharing
+  # the same gateway/backend as `frontend` above (staff dashboard). Deployed
+  # separately so it can ship on its own release cadence without touching
+  # the staff app. Same /api/* rewrite contract; update the destination if
+  # the gateway's public URL ever changes (custom domain, renamed service).
+  - type: web
+    name: patient-frontend
+    runtime: static
+    rootDir: patient-frontend
     buildCommand: npm install && npm run build
     staticPublishPath: out
     routes:

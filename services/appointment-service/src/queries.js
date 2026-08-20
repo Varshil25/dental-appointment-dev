@@ -40,15 +40,19 @@ export async function composeNames(rows) {
     console.error('[appointment-service] could not compose patient/dentist names:', err.message);
   }
   const patientMap = new Map(patients.map((p) => [p.id, p]));
-  const dentistMap = new Map(dentists.map((d) => [d.id, d.name]));
+  const dentistMap = new Map(dentists.map((d) => [d.id, d]));
   return rows.map((a) => {
     const p = patientMap.get(a.patient_id);
+    const d = dentistMap.get(a.dentist_id);
     return {
       ...a,
       patient_name: p?.name ?? null,
       patient_email: p?.email ?? null,
       patient_phone: p?.phone ?? null,
-      dentist_name: dentistMap.get(a.dentist_id) ?? null,
+      dentist_name: d?.name ?? null,
+      // Lets the UI flag a still-booked appointment whose dentist has since
+      // been deactivated, without a separate lookup.
+      dentist_status: d?.status ?? null,
     };
   });
 }

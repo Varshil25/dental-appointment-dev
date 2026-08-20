@@ -11,51 +11,111 @@ const firstName = (fullName) => (fullName || '').trim().split(' ')[0] || fullNam
 const escapeHtml = (s) =>
   String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
-const BRAND_COLOR = '#0f766e';
-
 // Table-based layout with inline styles throughout — the only markup style
 // that renders consistently across Gmail/Outlook/Apple Mail, none of which
 // can be relied on to support a <style> block or modern CSS layout.
-function renderEmail({ badge, badgeBg, badgeColor, heading, intro, rows, closing }) {
+function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, closing, ctaLabel }) {
   const { name, phone, address } = config.clinic;
-  const rowsHtml = rows
-    .map(
-      ([label, value]) => `
+
+  const rowItem = ([label, value, rowIcon]) => `
         <tr>
-          <td style="padding:6px 0;font-size:13px;color:#6b7280;width:88px;vertical-align:top;white-space:nowrap;">${escapeHtml(label)}</td>
-          <td style="padding:6px 0;font-size:14px;color:#111827;font-weight:500;">${escapeHtml(value)}</td>
+          <td style="padding:0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="34" valign="top" style="width:34px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                    <td width="28" height="28" align="center" valign="middle" style="width:28px;height:28px;border-radius:8px;background:${accentSoft};font-size:13px;line-height:28px;text-align:center;">${rowIcon || '&bull;'}</td>
+                  </tr></table>
+                </td>
+                <td style="padding-left:10px;" valign="middle">
+                  <div style="font-size:10.5px;font-weight:700;color:#9aa1ac;text-transform:uppercase;letter-spacing:.05em;line-height:1.4;">${escapeHtml(label)}</div>
+                  <div style="font-size:14.5px;font-weight:600;color:#0f172a;line-height:1.4;">${escapeHtml(value)}</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+
+  const divider = `
+        <tr>
+          <td style="padding:12px 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td height="1" style="font-size:1px;line-height:1px;background-color:#e9ecf0;">&nbsp;</td>
+            </tr></table>
+          </td>
+        </tr>`;
+
+  const rowsHtml = rows.map(rowItem).join(divider);
+
+  const telHref = phone ? `tel:${String(phone).replace(/[^+\d]/g, '')}` : null;
+  const cta = ctaLabel && telHref
+    ? `
+        <tr>
+          <td style="padding:26px 0 0;text-align:center;">
+            <a href="${telHref}" style="display:inline-block;background:${accent};color:#ffffff;font-size:13.5px;font-weight:700;text-decoration:none;padding:12px 30px;border-radius:999px;">${escapeHtml(ctaLabel)}</a>
+          </td>
         </tr>`
-    )
-    .join('');
+    : '';
 
   return `
-<div style="background:#f4f6f8;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+<div style="background:#eef1f5;padding:40px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;margin:0 auto;">
     <tr>
-      <td style="background:${BRAND_COLOR};padding:22px 32px;">
-        <span style="font-size:18px;font-weight:700;color:#ffffff;">&#129688; ${escapeHtml(name)}</span>
+      <td style="text-align:center;padding-bottom:22px;">
+        <span style="font-size:12.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#98a2b3;">&#129688;&nbsp; ${escapeHtml(name)}</span>
       </td>
     </tr>
     <tr>
-      <td style="padding:32px;">
-        <span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${badgeBg};color:${badgeColor};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">${escapeHtml(badge)}</span>
-        <h1 style="font-size:19px;margin:14px 0 10px;color:#111827;">${escapeHtml(heading)}</h1>
-        <p style="font-size:14px;line-height:1.6;color:#4b5563;margin:0 0 20px;">${escapeHtml(intro)}</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;">
+      <td style="background:#ffffff;border-radius:18px;box-shadow:0 10px 34px rgba(15,23,42,.08);overflow:hidden;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="padding:14px 16px;">
+            <td height="5" style="font-size:0;line-height:0;background-color:${accent};">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:38px 36px 6px;text-align:center;">
+              <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto 18px;">
+                <tr>
+                  <td width="54" height="54" align="center" valign="middle" style="width:54px;height:54px;border-radius:50%;background:${accentSoft};font-size:22px;font-weight:800;color:${accent};line-height:54px;text-align:center;">${icon}</td>
+                </tr>
+              </table>
+              <div>
+                <span style="display:inline-block;padding:5px 13px;border-radius:999px;background:${accentSoft};color:${accent};font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;">${escapeHtml(badge)}</span>
+              </div>
+              <h1 style="font-size:20px;line-height:1.35;margin:14px 0 8px;color:#0f172a;font-weight:800;">${escapeHtml(heading)}</h1>
+              <p style="font-size:14px;line-height:1.6;color:#667085;margin:0 auto;max-width:340px;">${escapeHtml(intro)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 36px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fb;border:1px solid #eef0f3;border-radius:14px;">
+                <tr>
+                  <td style="padding:18px 18px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      ${rowsHtml}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 36px 36px;text-align:center;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                ${rowsHtml}
+                ${cta}
+                <tr>
+                  <td style="padding:${cta ? '14' : '22'}px 0 0;">
+                    <p style="font-size:12.5px;line-height:1.6;color:#98a2b3;margin:0;">${escapeHtml(closing)}</p>
+                  </td>
+                </tr>
               </table>
             </td>
           </tr>
         </table>
-        <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:20px 0 0;">${escapeHtml(closing)}</p>
       </td>
     </tr>
     <tr>
-      <td style="background:#f9fafb;padding:18px 32px;border-top:1px solid #eef0f2;">
-        <p style="font-size:12px;color:#9ca3af;margin:0;">${escapeHtml(name)} &middot; ${escapeHtml(phone)} &middot; ${escapeHtml(address)}</p>
+      <td style="padding:22px 12px 0;text-align:center;">
+        <p style="font-size:11.5px;color:#a1a8b3;margin:0;line-height:1.6;">${escapeHtml(name)} &middot; ${escapeHtml(phone)} &middot; ${escapeHtml(address)}</p>
       </td>
     </tr>
   </table>
@@ -74,17 +134,19 @@ export function bookingTemplate(appt) {
     `To change your booking, call ${config.clinic.phone}.\n\n` +
     `Thank you,\n${config.clinic.name}`;
   const html = renderEmail({
+    icon: '&#10003;',
+    accent: '#059669',
+    accentSoft: '#ecfdf5',
     badge: 'Confirmed',
-    badgeBg: '#d1fae5',
-    badgeColor: '#059669',
     heading: `You're booked, ${firstName(appt.patient_name)}`,
     intro: `Your appointment at ${config.clinic.name} is confirmed. We'll send you a reminder before your visit.`,
     rows: [
-      ['When', fmt(appt.start_time)],
-      ['Dentist', appt.dentist_name],
-      ['Reason', appt.reason || 'General visit'],
+      ['When', fmt(appt.start_time), '&#128197;'],
+      ['Dentist', appt.dentist_name, '&#129688;'],
+      ['Reason', appt.reason || 'General visit', '&#128221;'],
     ],
-    closing: `Need to reschedule or cancel? Call us at ${config.clinic.phone}.`,
+    closing: "We'll email you a reminder as your visit gets closer.",
+    ctaLabel: 'Call to Reschedule',
   });
   return { subject, text, html };
 }
@@ -98,16 +160,18 @@ export function cancellationTemplate(appt) {
     `Would you like to rebook? Call us at ${config.clinic.phone}.\n\n` +
     `${config.clinic.name}`;
   const html = renderEmail({
+    icon: '&#10005;',
+    accent: '#e11d48',
+    accentSoft: '#fff1f2',
     badge: 'Cancelled',
-    badgeBg: '#fee2e2',
-    badgeColor: '#dc2626',
     heading: 'Your appointment was cancelled',
     intro: `Your appointment on ${fmt(appt.start_time)} with ${appt.dentist_name} has been cancelled.`,
     rows: [
-      ['When', fmt(appt.start_time)],
-      ['Dentist', appt.dentist_name],
+      ['When', fmt(appt.start_time), '&#128197;'],
+      ['Dentist', appt.dentist_name, '&#129688;'],
     ],
-    closing: `Would you like to rebook? Call us at ${config.clinic.phone}.`,
+    closing: 'We hope to see you again soon.',
+    ctaLabel: 'Call to Rebook',
   });
   return { subject, text, html };
 }
@@ -144,16 +208,18 @@ export function followUpTemplate(appt) {
     `  Dentist: ${appt.dentist_name}\n\n` +
     `See you then,\n${config.clinic.name}`;
   const html = renderEmail({
+    icon: '&#43;',
+    accent: '#4f46e5',
+    accentSoft: '#eef2ff',
     badge: 'Follow-up booked',
-    badgeBg: '#e0e7ff',
-    badgeColor: '#4f46e5',
     heading: 'Your follow-up visit is scheduled',
     intro: `We've scheduled your follow-up visit at ${config.clinic.name}.`,
     rows: [
-      ['When', fmt(appt.start_time)],
-      ['Dentist', appt.dentist_name],
+      ['When', fmt(appt.start_time), '&#128197;'],
+      ['Dentist', appt.dentist_name, '&#129688;'],
     ],
     closing: 'See you then!',
+    ctaLabel: 'Call the Clinic',
   });
   return { subject, text, html };
 }

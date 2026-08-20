@@ -19,3 +19,43 @@ export async function getTakenIntervals(dentistId, dayStartISO, dayEndISO) {
     clearTimeout(timeout);
   }
 }
+
+// Future booked appointments for a dentist (date, time, patient name) —
+// used to warn an admin before they deactivate a dentist. Throws on
+// failure, same fail-closed reasoning as getTakenIntervals: we must not
+// let a status change through on a check we couldn't actually perform.
+export async function getFutureBookedAppointments(dentistId) {
+  const url = `${config.appointmentServiceUrl}/internal/appointments/future-booked?dentistId=${dentistId}`;
+  const controller = new AbortController();
+  // Longer budget than getTakenIntervals: this endpoint composes patient
+  // and dentist names in, which is 2 more network+DB hops (one of them
+  // back into this very service) rather than one local query.
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Cancels one appointment via appointment-service's own cancel route, so
+// the existing cancellation-email/SMS + reminder-voiding logic there runs
+// unchanged — this is a same-effect internal call, not a reimplementation.
+export async function cancelAppointment(id, reason) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(`${config.appointmentServiceUrl}/${id}/cancel`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
