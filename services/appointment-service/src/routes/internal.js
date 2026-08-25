@@ -51,6 +51,31 @@ router.get('/appointments/future-booked', async (req, res) => {
   );
 });
 
+// Composed booked/completed/no_show appointments for one dentist on one
+// calendar day, with patient name — used by dentist-service's authenticated
+// "day schedule" summary (the dentist detail page's Today's Schedule card).
+// Distinct from GET /appointments above (which stays name-free and cheap)
+// because that one backs the *public* slot-availability check patient-
+// frontend/the chat widget hit unauthenticated — patient names must never
+// ride along on that response.
+router.get('/appointments/day', async (req, res) => {
+  const { dentistId, from, to } = req.query;
+  if (!dentistId || !from || !to)
+    return res.status(400).json({ error: 'dentistId, from and to are required' });
+  const rows = await listAppointmentsLocal({ status: 'booked,completed,no_show', dentistId, from, to });
+  const composed = await composeNames(rows);
+  res.json(
+    composed.map((a) => ({
+      id: a.id,
+      start_time: a.start_time,
+      end_time: a.end_time,
+      status: a.status,
+      patient_name: a.patient_name,
+      reason: a.reason,
+    }))
+  );
+});
+
 // Status breakdown + upcoming count for report-service.
 router.get('/appointments/summary', async (req, res) => {
   const { from, to } = req.query;

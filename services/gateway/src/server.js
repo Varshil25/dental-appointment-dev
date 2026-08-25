@@ -80,11 +80,18 @@ app.put('/api/patients/:id', requireAuth);
 // editing a profile or weekly availability is admin-or-that-dentist's-own-
 // doctor-account. (Known limitation: a doctor editing their own profile via
 // PUT '/:id' can also flip their own `status` field — the gateway doesn't
-// parse proxied bodies to strip that out; see src/auth.js.)
+// parse proxied bodies to strip that out; see src/auth.js.) The day
+// schedule summary (GET '/:id/schedule') composes patient names in, unlike
+// the public slots endpoint, so it gets the same admin-or-own-account gate
+// as availability rather than staying public.
 app.post('/api/dentists', requireAuth, requireRole('admin'));
 app.put('/api/dentists/:id', requireAuth, requireOwnDentistOrAdmin);
 app.get('/api/dentists/:id/availability', requireAuth, requireOwnDentistOrAdmin);
 app.put('/api/dentists/:id/availability', requireAuth, requireOwnDentistOrAdmin);
+// Day schedule summary (Today's Schedule card) composes patient names in,
+// unlike the public slots endpoint above — same admin-or-own-account gate
+// as availability.
+app.get('/api/dentists/:id/schedule', requireAuth, requireOwnDentistOrAdmin);
 
 // Clinic profile — GET stays public (patient-frontend + the chat widget
 // read it); PUT is the exact "restrict to admin role" the TODOs left in

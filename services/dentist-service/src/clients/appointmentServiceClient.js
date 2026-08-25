@@ -40,6 +40,26 @@ export async function getFutureBookedAppointments(dentistId) {
   }
 }
 
+// Booked/completed/no_show appointments for one dentist on one calendar
+// day, with patient names composed in — used by the authenticated day-
+// schedule summary (GET /:id/schedule) on the dentist detail page. Kept
+// separate from getTakenIntervals (which the public slots endpoint uses)
+// so that endpoint never has to fetch, and can never leak, patient names.
+export async function getDaySchedule(dentistId, dayStartISO, dayEndISO) {
+  const url =
+    `${config.appointmentServiceUrl}/internal/appointments/day` +
+    `?dentistId=${dentistId}&from=${encodeURIComponent(dayStartISO)}&to=${encodeURIComponent(dayEndISO)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Cancels one appointment via appointment-service's own cancel route, so
 // the existing cancellation-email/SMS + reminder-voiding logic there runs
 // unchanged — this is a same-effect internal call, not a reimplementation.

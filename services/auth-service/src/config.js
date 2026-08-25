@@ -13,8 +13,8 @@ export const config = {
   seedToken: process.env.SEED_TOKEN || 'dev-seed-token',
   clinic: {
     name: process.env.CLINIC_NAME || 'Bright Smile Dental',
-    phone: process.env.CLINIC_PHONE || '(555) 012-3456',
-    address: process.env.CLINIC_ADDRESS || '12 Riverside Ave, Springfield',
+    phone: process.env.CLINIC_PHONE || '+61 470375410',
+    address: process.env.CLINIC_ADDRESS || '19 amethyst st, salisbury east sa 5109',
   },
   otp: {
     ttlMinutes: 10,

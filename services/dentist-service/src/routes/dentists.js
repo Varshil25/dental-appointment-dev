@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { generateSlots } from '../slots.js';
-import { getTakenIntervals, getFutureBookedAppointments, cancelAppointment } from '../clients/appointmentServiceClient.js';
+import { getTakenIntervals, getDaySchedule, getFutureBookedAppointments, cancelAppointment } from '../clients/appointmentServiceClient.js';
 import { cached, invalidate } from '../cache.js';
 
 const router = Router();
@@ -245,6 +245,71 @@ router.get('/:id/slots', async (req, res) => {
 
   const daySchedule = { slot_minutes: dentist.slot_minutes, work_start: avail.work_start, work_end: avail.work_end };
   res.json({ dentist, date, slots: generateSlots(daySchedule, date, taken) });
+});
+
+// Day schedule summary (booked appointments + free slots, in one call) for
+// a dentist on a given date — powers the "Today's Schedule" card on the
+// dentist detail page. Same generateSlots()/availability logic as GET
+// /:id/slots above, but composes patient names onto the booked slots, so
+// unlike that route (public, used by patient-frontend/the chat widget for
+// booking) this one is gated to the dentist's own account or an admin —
+// see gateway/src/server.js's requireOwnDentistOrAdmin on this path.
+router.get('/:id/schedule', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM dentists WHERE id = $1', [req.params.id]);
+  const dentist = rows[0];
+  if (!dentist) return res.status(404).json({ error: 'dentist not found' });
+  const date = req.query.date;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    return res.status(400).json({ error: 'date=YYYY-MM-DD is required' });
+
+  const notWorking = (reason) =>
+    res.json({ dentist, date, working: false, reason, slots: [], booked_count: 0, free_count: 0 });
+
+  if (dentist.status === 'inactive') return notWorking('inactive');
+
+  const [y, m, d] = date.split('-').map(Number);
+  const dayStart = new Date(y, m - 1, d, 0, 0, 0);
+  const dayEnd = new Date(y, m - 1, d + 1, 0, 0, 0);
+  const dayOfWeek = dayStart.getDay();
+
+  const { rows: availRows } = await pool.query(
+    'SELECT is_available, work_start, work_end FROM dentist_availability WHERE dentist_id = $1 AND day_of_week = $2',
+    [dentist.id, dayOfWeek]
+  );
+  const avail = availRows[0] || { is_available: true, work_start: dentist.work_start, work_end: dentist.work_end };
+
+  if (!avail.is_available) return notWorking('day_off');
+
+  let appointments;
+  try {
+    appointments = await getDaySchedule(dentist.id, dayStart.toISOString(), dayEnd.toISOString());
+  } catch (err) {
+    console.error('[dentist-service] could not reach appointment-service:', err.message);
+    return res.status(503).json({ error: 'could not check dentist schedule, try again' });
+  }
+
+  const taken = appointments.map((a) => [new Date(a.start_time).getTime(), new Date(a.end_time).getTime()]);
+  const daySchedule = { slot_minutes: dentist.slot_minutes, work_start: avail.work_start, work_end: avail.work_end };
+  const slots = generateSlots(daySchedule, date, taken).map((slot) => {
+    const startMs = new Date(slot.start).getTime();
+    const endMs = new Date(slot.end).getTime();
+    const appt = appointments.find(
+      (a) => startMs < new Date(a.end_time).getTime() && new Date(a.start_time).getTime() < endMs
+    );
+    return { ...slot, booked: !!appt, appointment_id: appt?.id ?? null, patient_name: appt?.patient_name ?? null };
+  });
+
+  res.json({
+    dentist,
+    date,
+    working: true,
+    reason: null,
+    work_start: avail.work_start,
+    work_end: avail.work_end,
+    slots,
+    booked_count: appointments.length,
+    free_count: slots.filter((s) => !s.booked).length,
+  });
 });
 
 export default router;

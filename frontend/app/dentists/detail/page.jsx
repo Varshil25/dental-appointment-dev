@@ -8,6 +8,7 @@ import { DAY_LABELS } from '@/lib/days';
 import PhoneInput from '@/components/phone-input';
 import { StatusBadge } from '@/components/status-badge';
 import { DeactivateDentistDialog } from '@/components/deactivate-dentist-dialog';
+import { TodaysScheduleCard } from '@/components/todays-schedule-card';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -134,6 +135,10 @@ function DentistDetail() {
         <Badge variant={dentist.status === 'active' ? 'completed' : 'cancelled'} className="capitalize">
           {dentist.status}
         </Badge>
+      </div>
+
+      <div className="mb-4">
+        <TodaysScheduleCard dentistId={id} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">

@@ -67,6 +67,9 @@ export const api = {
   updateDentistAvailability: (id, days) =>
     request(`/dentists/${id}/availability`, { method: 'PUT', body: JSON.stringify({ days }) }),
   slots: (dentistId, date) => request(`/dentists/${dentistId}/slots?date=${date}`),
+  // Auth-gated: composes patient names in, unlike `slots` above. Powers the
+  // Today's Schedule card on the dentist detail page.
+  dentistSchedule: (dentistId, date) => request(`/dentists/${dentistId}/schedule?date=${date}`),
 
   // Clinic profile (name/logo/contact/weekly hours) — powers the admin
   // Clinic Settings page and the patient-facing booking pages. GET is
