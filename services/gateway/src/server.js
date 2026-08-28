@@ -30,6 +30,12 @@ app.use(cors());
 // worked fine.
 app.set('trust proxy', 1);
 
+// TEMP DIAGNOSTIC — remove after debugging the proxy 404.
+app.use((req, _res, next) => {
+  console.log(`[diag2] method=${req.method} url=${JSON.stringify(req.url)} xff=${JSON.stringify(req.headers['x-forwarded-for'])} ip=${req.ip}`);
+  next();
+});
+
 // Registered before the proxies below so it's answered by the gateway
 // itself rather than forwarded anywhere.
 app.get('/api/health', aggregatedHealth);
@@ -141,7 +147,14 @@ app.post('/api/dentist-applications/:id/reject', requireAuth, requireRole('admin
 
 mountProxies(app);
 
-app.use((req, res) => res.status(404).json({ error: 'not found' }));
+app.use((req, res) => {
+  console.log(`[diag2] 404 fallthrough for method=${req.method} url=${JSON.stringify(req.url)}`);
+  res.status(404).json({ error: 'not found' });
+});
+app.use((err, req, res, _next) => {
+  console.log(`[diag2] error handler caught: ${err && err.stack}`);
+  res.status(500).json({ error: 'internal error' });
+});
 
 app.listen(config.port, () => {
   console.log(`\n🦷  Gateway listening on http://localhost:${config.port}`);
