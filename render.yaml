@@ -432,6 +432,18 @@ services:
       # primary path through patient-frontend — hitting frontend's own
       # onrender.com URL directly for /v1/admin/* still goes through its
       # own (fragile) rule; always use the root domain in production.
+      # Render's `/v1/admin/*` rule below does NOT match the bare path
+      # `/v1/admin` (no trailing slash, nothing after it) — confirmed by
+      # hitting it directly: it fell through all the way to the final `/*`
+      # catch-all and served patient-frontend's own home page instead of
+      # the dashboard. That path is exactly what a fresh browser load of
+      # the admin root produces (bookmark, hard refresh, or the app's own
+      # post-login `router.replace('/')`, which resolves to `/v1/admin`
+      # under this basePath) — needs its own exact-match rule, not folded
+      # into the wildcard one below.
+      - type: rewrite
+        source: /v1/admin
+        destination: https://frontend-kj54.onrender.com/
       - type: rewrite
         source: /v1/admin/_next/*
         destination: https://frontend-kj54.onrender.com/_next/*
