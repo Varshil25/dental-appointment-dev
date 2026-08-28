@@ -408,6 +408,26 @@ services:
       - type: rewrite
         source: /api/*
         destination: https://gateway-6w4f.onrender.com/api/*
+      # Routes admin asset requests straight to frontend's own flat /_next/*
+      # output in one hop, bypassing frontend's own /v1/admin/_next/* rule
+      # entirely (must come before the broader /v1/admin/* rule below —
+      # first match wins). That's deliberate: frontend's own version of this
+      # rule points at its own full https:// URL (required — see that
+      # service's note on why a local-path destination never works), and a
+      # rewrite destination pointing a service at *itself* by full URL
+      # degrades under repeated real traffic — every asset started
+      # returning `Content-Length: 0` after a handful of requests, breaking
+      # the whole admin dashboard (blank page, confirmed by inspecting
+      # response headers directly, not just the browser). Going straight
+      # from patient-frontend to frontend (a normal cross-service external
+      # rewrite, the same pattern the /api/* rule above already uses
+      # reliably) avoids the self-reference entirely. Only fixes the
+      # primary path through patient-frontend — hitting frontend's own
+      # onrender.com URL directly for /v1/admin/* still goes through its
+      # own (fragile) rule; always use the root domain in production.
+      - type: rewrite
+        source: /v1/admin/_next/*
+        destination: https://frontend-kj54.onrender.com/_next/*
       - type: rewrite
         source: /v1/admin/*
         destination: https://frontend-kj54.onrender.com/v1/admin/*
