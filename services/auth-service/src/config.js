@@ -1,12 +1,18 @@
 import 'dotenv/config';
 
+// Render's `fromService: {property: hostport}` env vars resolve to bare
+// "host:port" (no scheme) — fetch() needs an absolute URL, so prepend
+// http:// when it's missing. Local .env values are already full
+// http://localhost:... URLs, so this is a no-op there.
+const withScheme = (url) => (url && !/^https?:\/\//.test(url) ? `http://${url}` : url);
+
 export const config = {
   port: Number(process.env.PORT) || 4007,
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
-  dentistServiceUrl: process.env.DENTIST_SERVICE_URL || 'http://localhost:4002',
-  notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:4005',
+  dentistServiceUrl: withScheme(process.env.DENTIST_SERVICE_URL) || 'http://localhost:4002',
+  notificationServiceUrl: withScheme(process.env.NOTIFICATION_SERVICE_URL) || 'http://localhost:4005',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000/v1/admin',
   // Guards POST /internal/seed-user — same shared-token pattern as
   // appointment-service's POST /internal/appointments/seed.
