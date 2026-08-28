@@ -358,6 +358,18 @@ services:
   # it as the literal 7-character string ":splat", confirmed by logging
   # gateway's raw incoming req.url and seeing exactly "/api/:splat" arrive
   # unsubstituted, on every combination of slash placement around it).
+  #
+  # SECOND wildcard gotcha, specific to the /v1/admin/_next/* rule below:
+  # `*` substitution only works when the destination is a full external
+  # URL — a same-site *local* path destination that also uses `*` (like
+  # the seemingly obvious `/_next/*`) never gets the wildcard substituted
+  # and 404s on every asset, even though this service's own `/*` ->
+  # `/index.html` and `/v1/admin/*` -> `/index.html` rules (fixed,
+  # non-wildcard destinations) work fine. Confirmed by switching this one
+  # rule's destination to this service's own full https:// URL — that
+  # immediately started returning 200s where the local-path form 404'd on
+  # the identical request. So this rule points at itself by full URL
+  # instead of a local path; keep it that way.
   - type: web
     name: frontend
     runtime: static
@@ -370,7 +382,7 @@ services:
         destination: https://gateway-6w4f.onrender.com/api/*
       - type: rewrite
         source: /v1/admin/_next/*
-        destination: /_next/*
+        destination: https://frontend-kj54.onrender.com/_next/*
       - type: rewrite
         source: /v1/admin/*
         destination: /index.html
