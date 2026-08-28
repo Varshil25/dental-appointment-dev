@@ -27,6 +27,30 @@
 # (just without the read-through cache speedup) if it's left unset. One
 # shared Redis instance is fine across all 5 services; cache keys are
 # namespaced per service (e.g. "report-service:summary:...").
+#
+# IMPORTANT — inter-service URLs are hardcoded public https:// URLs below,
+# NOT `fromService: {property: hostport}`. That's deliberate, not an
+# oversight: `hostport` resolves to Render's *private* network address
+# (e.g. "appointment-service-wgwd:10000", no scheme), and free-tier web
+# services can *send* private-network requests but can't *receive* them
+# (https://render.com/docs/private-network — "Free web services ... can't
+# receive [private network requests]"). Every service here is on `free`,
+# so any service-to-service call over the private network — including
+# gateway's own healthCheckPath, which fans out to every backend service —
+# just hangs forever, and the deploy's health check times out. Routing
+# these calls over the public internet instead works fine on `free`, at
+# the cost of a bit more latency than the private network would give.
+# Move back to `fromService`/`hostport` if/when every service is upgraded
+# off `free`.
+#
+# Each public URL below is only correct for *this* deployment — Render
+# appends a random suffix (e.g. "-wgwd") to a service's onrender.com
+# subdomain whenever the plain name is already taken (which happened for
+# every service here except dentist-service). If you tear down and
+# recreate these services from scratch, the new suffixes won't match what's
+# hardcoded below — check each service's actual URL in the Render
+# dashboard after deploying and update every `value:` that references it
+# (both the envVars below and the static sites' `routes` further down).
 
 services:
   - type: web
@@ -46,9 +70,9 @@ services:
       - key: REDIS_URL
         sync: false
       - key: APPOINTMENT_SERVICE_URL
-        fromService: { name: appointment-service, type: web, property: hostport }
+        value: https://appointment-service-wgwd.onrender.com
       - key: DENTIST_SERVICE_URL
-        fromService: { name: dentist-service, type: web, property: hostport }
+        value: https://dentist-service.onrender.com
 
   - type: web
     name: dentist-service
@@ -67,9 +91,9 @@ services:
       - key: REDIS_URL
         sync: false
       - key: APPOINTMENT_SERVICE_URL
-        fromService: { name: appointment-service, type: web, property: hostport }
+        value: https://appointment-service-wgwd.onrender.com
       - key: NOTIFICATION_SERVICE_URL
-        fromService: { name: notification-service, type: web, property: hostport }
+        value: https://notification-service-18oo.onrender.com
       - key: CLINIC_NAME
         value: Bright Smile Dental
       - key: CLINIC_PHONE
@@ -99,13 +123,13 @@ services:
       - key: REDIS_URL
         sync: false
       - key: PATIENT_SERVICE_URL
-        fromService: { name: patient-service, type: web, property: hostport }
+        value: https://patient-service-xkz0.onrender.com
       - key: DENTIST_SERVICE_URL
-        fromService: { name: dentist-service, type: web, property: hostport }
+        value: https://dentist-service.onrender.com
       - key: REMINDER_SERVICE_URL
-        fromService: { name: reminder-service, type: web, property: hostport }
+        value: https://reminder-service-55dd.onrender.com
       - key: NOTIFICATION_SERVICE_URL
-        fromService: { name: notification-service, type: web, property: hostport }
+        value: https://notification-service-18oo.onrender.com
       - key: CLINIC_NAME
         value: Bright Smile Dental
       - key: CLINIC_PHONE
@@ -132,7 +156,7 @@ services:
       - key: REDIS_URL
         sync: false
       - key: NOTIFICATION_SERVICE_URL
-        fromService: { name: notification-service, type: web, property: hostport }
+        value: https://notification-service-18oo.onrender.com
       - key: REMINDER_OFFSETS_HOURS
         value: "48,2"
       - key: REMINDER_CRON
@@ -211,9 +235,9 @@ services:
       - key: JWT_EXPIRES_IN
         value: 8h
       - key: DENTIST_SERVICE_URL
-        fromService: { name: dentist-service, type: web, property: hostport }
+        value: https://dentist-service.onrender.com
       - key: NOTIFICATION_SERVICE_URL
-        fromService: { name: notification-service, type: web, property: hostport }
+        value: https://notification-service-18oo.onrender.com
       # The staff dashboard's public URL — password reset emails link to
       # <FRONTEND_URL>/reset-password?token=...; only staff (admin/doctor)
       # accounts exist, so this always points at the admin dashboard, never
@@ -222,7 +246,7 @@ services:
       # service's routes below), so links point there rather than at the
       # `frontend` service's own onrender.com URL directly.
       - key: FRONTEND_URL
-        value: https://patient-frontend.onrender.com/v1/admin
+        value: https://patient-frontend-27om.onrender.com/v1/admin
       - key: CLINIC_NAME
         value: Bright Smile Dental
       - key: CLINIC_PHONE
@@ -247,13 +271,13 @@ services:
       - key: REDIS_URL
         sync: false
       - key: PATIENT_SERVICE_URL
-        fromService: { name: patient-service, type: web, property: hostport }
+        value: https://patient-service-xkz0.onrender.com
       - key: DENTIST_SERVICE_URL
-        fromService: { name: dentist-service, type: web, property: hostport }
+        value: https://dentist-service.onrender.com
       - key: APPOINTMENT_SERVICE_URL
-        fromService: { name: appointment-service, type: web, property: hostport }
+        value: https://appointment-service-wgwd.onrender.com
       - key: REMINDER_SERVICE_URL
-        fromService: { name: reminder-service, type: web, property: hostport }
+        value: https://reminder-service-55dd.onrender.com
       - key: CLINIC_NAME
         value: Bright Smile Dental
       - key: CLINIC_PHONE
@@ -274,17 +298,17 @@ services:
       - key: NODE_VERSION
         value: 22.9.0
       - key: PATIENT_SERVICE_URL
-        fromService: { name: patient-service, type: web, property: hostport }
+        value: https://patient-service-xkz0.onrender.com
       - key: DENTIST_SERVICE_URL
-        fromService: { name: dentist-service, type: web, property: hostport }
+        value: https://dentist-service.onrender.com
       - key: APPOINTMENT_SERVICE_URL
-        fromService: { name: appointment-service, type: web, property: hostport }
+        value: https://appointment-service-wgwd.onrender.com
       - key: REMINDER_SERVICE_URL
-        fromService: { name: reminder-service, type: web, property: hostport }
+        value: https://reminder-service-55dd.onrender.com
       - key: REPORT_SERVICE_URL
-        fromService: { name: report-service, type: web, property: hostport }
+        value: https://report-service-8q0p.onrender.com
       - key: AUTH_SERVICE_URL
-        fromService: { name: auth-service, type: web, property: hostport }
+        value: https://auth-service-e0iz.onrender.com
       # MUST be set to the exact same value pasted into auth-service's own
       # JWT_SECRET above — see that service's comment for why.
       - key: JWT_SECRET
@@ -313,11 +337,9 @@ services:
   # service's own onrender.com URL or reverse-proxied in from
   # patient-frontend's origin (see that service's /v1/admin/* rewrite
   # below) — same static build either way, no separate basePath-less build
-  # needed. The /api/* rewrite (unchanged) is what makes the "frontend
-  # calls one relative origin" contract work once frontend and gateway are
-  # separate Render services — its destination must match the gateway's
-  # actual public URL (predictable as https://<gateway name>.onrender.com
-  # unless you've attached a custom domain).
+  # needed. The /api/* rewrite's destination is the gateway's actual public
+  # URL — see the file-level comment above on why this can't be
+  # `fromService` and why it needs re-checking after a fresh deploy.
   - type: web
     name: frontend
     runtime: static
@@ -327,7 +349,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://gateway.onrender.com/api/:splat
+        destination: https://gateway-6w4f.onrender.com/api/:splat
       - type: rewrite
         source: /v1/admin/_next/*
         destination: /_next/:splat
@@ -343,9 +365,9 @@ services:
   # to the `frontend` service above, so both apps are reachable from this
   # one origin/port in production (matching the local dev-proxy in
   # scripts/dev-proxy.js). That rewrite MUST come before the `/*` catch-all
-  # below (first matching route wins) — its destination must match the
-  # `frontend` service's actual public URL, same caveat as the /api/*
-  # destination below matching the gateway's.
+  # below (first matching route wins) — its destination is the `frontend`
+  # service's actual public URL, same caveat as the /api/* destination
+  # above matching the gateway's.
   - type: web
     name: patient-frontend
     runtime: static
@@ -355,10 +377,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://gateway.onrender.com/api/:splat
+        destination: https://gateway-6w4f.onrender.com/api/:splat
       - type: rewrite
         source: /v1/admin/*
-        destination: https://frontend.onrender.com/v1/admin/:splat
+        destination: https://frontend-kj54.onrender.com/v1/admin/:splat
       - type: rewrite
         source: /*
         destination: /index.html

@@ -5,11 +5,23 @@ below is what you fill in by hand on Render's/Neon's dashboards (secrets never
 live in the yaml).
 
 > **Architecture note:** this codebase has no message queue anywhere — every
-> inter-service call is synchronous HTTP (wired via Render's `fromService` in
-> render.yaml), and the "async reminders" feature is `reminder-service`
-> polling its own DB on a `node-cron` schedule (`REMINDER_CRON`), not a queue
-> consumer. There is no RabbitMQ/CloudAMQP step in this checklist — skip any
-> instructions elsewhere that mention it, they don't apply to this repo.
+> inter-service call is synchronous HTTP, and the "async reminders" feature
+> is `reminder-service` polling its own DB on a `node-cron` schedule
+> (`REMINDER_CRON`), not a queue consumer. There is no RabbitMQ/CloudAMQP
+> step in this checklist — skip any instructions elsewhere that mention it,
+> they don't apply to this repo.
+
+> **Private-network note:** every `*_SERVICE_URL` in render.yaml is a
+> hardcoded public `https://...onrender.com` URL, not Render's
+> `fromService: {property: hostport}`. That's required, not a style choice:
+> `hostport` resolves to the *private* network address, and free-tier web
+> services can send private-network requests but can't receive them
+> (confirmed via Render's docs) — so on an all-`free` deploy like this one,
+> any service-to-service call over the private network just hangs forever.
+> This bit gateway hardest: its own `healthCheckPath` fans out to every
+> backend service, so with `hostport` URLs the deploy's health check never
+> returns and the first deploy times out. See section (d) for what this
+> means for the hardcoded URLs after a fresh deploy.
 
 > **Plan note:** every service runs on Render's `free` plan (no card on
 > file, by choice). Consequence: free instances spin down after 15 minutes
@@ -90,27 +102,38 @@ want to keep across redeploys.
 **frontend** (admin static site) and **patient-frontend** (public static site)
 — no secrets; both build with `npm install && npm run build`.
 
-## d) Post-deploy: fix the gateway/frontend URL placeholders if needed
+## d) Post-deploy: fix the hardcoded service URLs if needed
 
-Render static sites' `routes` rewrites only accept literal destination URLs —
-`fromService` isn't supported there (only in `envVars`). `render.yaml`
-currently hardcodes the *predictable* URLs Render assigns by default
-(`https://<service name>.onrender.com`):
+`render.yaml` hardcodes every inter-service URL and static-site route
+destination as a literal `https://<service name>-<suffix>.onrender.com`
+(see the private-network note above for why these can't be `fromService`).
+The exact suffixes currently in the file match **this specific deployment**
+— they will NOT match a fresh one, because Render appends a random suffix
+to a service's default subdomain whenever the plain name is already taken
+(true for every service here except `dentist-service`, which had no
+suffix).
 
-- `frontend`'s and `patient-frontend`'s `/api/*` route → `https://gateway.onrender.com/api/:splat`
-- `patient-frontend`'s `/v1/admin/*` route → `https://frontend.onrender.com/v1/admin/:splat`
-- `auth-service`'s `FRONTEND_URL` value → `https://patient-frontend.onrender.com/v1/admin`
+**If you tear down and recreate these services from scratch:**
 
-These are only correct if the service names `gateway`, `frontend`, and
-`patient-frontend` weren't already taken on Render (if they were, Render
-appends a random suffix to your actual URL instead). **After the first
-deploy**, open each service in the Render dashboard and check its real URL
-against the assumptions above. If any differ:
-
-1. Edit the corresponding `destination:`/`value:` line(s) in `render.yaml`.
-2. Commit and push (Blueprint auto-redeploys) — or edit directly in each
-   service's dashboard, keeping in mind the sync-overwrite caveat from
-   section (c).
+1. After the first deploy, open each service in the Render dashboard and
+   note its actual URL (shown at the top of the service page).
+2. Update every place that references it in `render.yaml`:
+   - Every other service's `*_SERVICE_URL` env var that points at it (e.g.
+     appointment-service's URL is the value of `APPOINTMENT_SERVICE_URL` on
+     patient-service, dentist-service, report-service, and gateway)
+   - `frontend`'s and `patient-frontend`'s `/api/*` route → gateway's URL
+   - `patient-frontend`'s `/v1/admin/*` route → `frontend`'s URL
+   - `auth-service`'s `FRONTEND_URL` → `patient-frontend`'s URL + `/v1/admin`
+3. Commit and push (each service auto-deploys on push to `main`) — or edit
+   directly in each service's dashboard Environment tab (faster for a
+   same-day fix, but gets silently overwritten if you ever push a
+   render.yaml change touching that same var — keep the repo as the source
+   of truth).
+4. Gateway specifically: its `healthCheckPath` calls out to 6 other
+   services, so if you update its `*_SERVICE_URL`s, trigger a redeploy of
+   gateway *last*, after confirming every service it depends on is already
+   deployed and responding — otherwise its own deploy's health check can
+   time out the same way described above.
 
 ## e) Smoke tests
 
