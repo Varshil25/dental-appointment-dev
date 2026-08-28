@@ -2,12 +2,22 @@ import 'dotenv/config';
 
 export const config = {
   port: Number(process.env.PORT) || 4005,
-  // Resend's HTTP API — preferred over SMTP when set. Render (and many
-  // other PaaS free tiers) block outbound traffic to SMTP ports 25/465/587
-  // entirely (https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports),
+  // SendGrid's HTTP API — tried first when set (see mailer.js). Render (and
+  // many other PaaS free tiers) block outbound traffic to SMTP ports
+  // 25/465/587 entirely (https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports),
   // so SMTP_* below silently times out there even with correct credentials
-  // — this goes over plain HTTPS instead, which isn't blocked. Get a free
-  // key at resend.com (3,000 emails/month, no card required).
+  // — this goes over plain HTTPS instead, which isn't blocked. Preferred
+  // over Resend below because SendGrid's free tier lets a single verified
+  // sender email (Settings > Sender Authentication > Single Sender
+  // Verification, no domain needed) send to ANY recipient, whereas
+  // Resend's sandbox mode (no verified domain) can only ever send to its
+  // own account's email — see resendApiKey below for why that fallback is
+  // effectively test-only until a domain is verified there.
+  sendgridApiKey: process.env.SENDGRID_API_KEY || '',
+  // Resend's HTTP API — fallback when SENDGRID_API_KEY isn't set. Same
+  // SMTP-port-blocked reasoning as above. Get a free key at resend.com
+  // (3,000 emails/month, no card required) — but note its sandbox
+  // restriction (see mailer.js's sendViaResend) until a domain is verified.
   resendApiKey: process.env.RESEND_API_KEY || '',
   smtp: {
     host: process.env.SMTP_HOST || '',

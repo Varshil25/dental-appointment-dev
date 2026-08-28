@@ -1,6 +1,46 @@
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
 
+// config.mailFrom is a combined "Name <email>" string (what Resend/
+// nodemailer both accept directly) — SendGrid's API wants those as
+// separate fields, so this splits it. Falls back to treating the whole
+// string as the email if it isn't in "Name <email>" form.
+function parseMailFrom(mailFrom) {
+  const m = /^(.*)<(.+)>\s*$/.exec(mailFrom.trim());
+  if (!m) return { email: mailFrom.trim() };
+  return { name: m[1].trim().replace(/^"|"$/g, ''), email: m[2].trim() };
+}
+
+// Preferred provider (see config.js's sendgridApiKey comment for why):
+// SendGrid's free tier lets one verified sender email — verified once via
+// Settings > Sender Authentication > Single Sender Verification, no domain
+// needed — send to any recipient, unlike Resend's sandbox mode below.
+async function sendViaSendGrid(to, { subject, text, html }) {
+  const from = parseMailFrom(config.mailFrom);
+  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.sendgridApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }] }],
+      from,
+      subject,
+      content: [
+        ...(text ? [{ type: 'text/plain', value: text }] : []),
+        ...(html ? [{ type: 'text/html', value: html }] : []),
+      ],
+    }),
+  });
+  // SendGrid returns 202 with an empty body on success — no message id in
+  // the JSON to read, only the X-Message-Id response header.
+  if (res.status === 202) return { ok: true, detail: res.headers.get('x-message-id') || 'sent' };
+  const data = await res.json().catch(() => ({}));
+  const message = data.errors?.map((e) => e.message).join('; ') || `SendGrid responded ${res.status}`;
+  throw new Error(message);
+}
+
 // Resend's sandbox mode (no verified sending domain) hard-rejects any
 // recipient except the account owner's own address — every OTHER staff
 // login (any account whose email isn't that one address) would otherwise
@@ -83,10 +123,22 @@ async function getTransporter() {
   return transporterPromise;
 }
 
-// Send an email. Returns { ok, detail } where detail is a Resend message id,
-// an Ethereal preview URL (test mode), an SMTP message id (real mode), or
-// an error string.
+// Send an email. Returns { ok, detail } where detail is a SendGrid/Resend
+// message id, an Ethereal preview URL (test mode), an SMTP message id
+// (real mode), or an error string.
 export async function sendMail(to, { subject, text, html }) {
+  // Tried first, on its own from the rest of the chain below: a failure
+  // here (SendGrid down, sender not verified yet, quota hit) shouldn't be
+  // fatal when Resend or SMTP might still get the message through — see
+  // config.js for why SendGrid is preferred when available.
+  if (config.sendgridApiKey) {
+    try {
+      return await sendViaSendGrid(to, { subject, text, html });
+    } catch (err) {
+      console.error('[mailer] SendGrid send failed, falling back:', err.message);
+    }
+  }
+
   try {
     if (config.resendApiKey) return await sendViaResend(to, { subject, text, html });
 

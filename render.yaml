@@ -184,10 +184,16 @@ services:
       # (https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports),
       # so the SMTP_* vars below never work here even with correct
       # credentials — confirmed by a "Connection timeout" from every send
-      # attempt. RESEND_API_KEY (HTTPS, not blocked) is what actually
-      # delivers email on this deploy; get a free key at resend.com (3,000
-      # emails/month, no card). SMTP_* stays configurable for local dev or
-      # a non-free-tier deploy, where it does work.
+      # attempt. SENDGRID_API_KEY (HTTPS, not blocked) is what actually
+      # delivers email on this deploy — tried first (see mailer.js), falling
+      # back to RESEND_API_KEY then SMTP_*. SendGrid is preferred because its
+      # free tier's Single Sender Verification (Settings > Sender
+      # Authentication, no domain needed) lets one verified email send to
+      # ANY recipient; Resend's sandbox mode without a verified domain can
+      # only ever send to its own account's email. SMTP_* stays configurable
+      # for local dev or a non-free-tier deploy, where it does work.
+      - key: SENDGRID_API_KEY
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: SMTP_HOST
