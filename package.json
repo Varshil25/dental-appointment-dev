@@ -1,0 +1,12 @@
+{
+  "name": "dental-appointment-dev-main",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:all": "concurrently -n admin,patient,proxy -c blue,green,magenta \"npm run dev:internal --prefix frontend\" \"npm run dev:internal --prefix patient-frontend\" \"node scripts/dev-proxy.js\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "http-proxy": "^1.18.1"
+  }
+}

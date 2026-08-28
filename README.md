@@ -200,6 +200,21 @@ link in the Reminders page). Great for demos with zero setup.
 > The seeded first patient uses `varshilce@gmail.com`, so with real SMTP
 > configured you'll receive an actual reminder in your own inbox.
 
+## SMS setup (real reminders, optional)
+
+The prototype also sends **real** SMS reminders via Twilio, alongside email —
+a reminder with a patient phone on file gets both an `email` and an `sms` row
+(see the `channel` column in the Reminders page). Configure Twilio in
+`services/notification-service/.env`; see that file's comments for exactly
+where to find each value in the Twilio console. **If any of the four
+`TWILIO_*` vars are left blank, SMS sending is silently disabled** — the app
+still runs and email reminders keep working. To send one test SMS and
+confirm delivery before relying on the full reminder flow:
+
+```bash
+node scripts/test-sms.js +15551234567
+```
+
 ### Reminder config (`services/reminder-service/.env`)
 ```
 REMINDER_OFFSETS_HOURS=48,2     # when to remind, hours before
@@ -266,5 +281,5 @@ clinical-imaging data is collected. Each service's `.env` (Neon connection
 string, SMTP secrets, seed token) is git-ignored (see root `.gitignore`).
 
 **Limitations / next steps.** No auth yet; single clinic/timezone (server-local);
-SMS is modelled in the schema (`channel`) but only email is wired up; reminders
+SMS reminders are wired up via Twilio (see "SMS setup" above) alongside email, using the same `channel` field; reminders
 are best-effort (a failed send is logged and can be retried via "Send now").

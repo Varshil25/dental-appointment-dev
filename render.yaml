@@ -171,6 +171,9 @@ services:
         value: "Bright Smile Dental <no-reply@brightsmile.example>"
       # Twilio SMS — optional, same fail-soft posture as SMTP above: leave
       # blank and SMS sending is silently disabled (emails keep working).
+      # Auth is the main Auth Token, not an API Key SID/Secret pair — Twilio
+      # API Keys require a paid (non-Trial) account; see
+      # notification-service/.env.example for the full explanation.
       # TWILIO_FROM_NUMBER must be a number this Twilio account owns.
       - key: TWILIO_ACCOUNT_SID
         sync: false
@@ -209,12 +212,15 @@ services:
         fromService: { name: dentist-service, type: web, property: hostport }
       - key: NOTIFICATION_SERVICE_URL
         fromService: { name: notification-service, type: web, property: hostport }
-      # The staff dashboard's own URL (not patient-frontend) — password
-      # reset emails link to <FRONTEND_URL>/reset-password?token=...; only
-      # staff (admin/doctor) accounts exist, so this always points at the
-      # `frontend` static site below, never `patient-frontend`.
+      # The staff dashboard's public URL — password reset emails link to
+      # <FRONTEND_URL>/reset-password?token=...; only staff (admin/doctor)
+      # accounts exist, so this always points at the admin dashboard, never
+      # patient-frontend. The dashboard is single-origin now: it's served
+      # under /v1/admin off patient-frontend's own domain (see that
+      # service's routes below), so links point there rather than at the
+      # `frontend` service's own onrender.com URL directly.
       - key: FRONTEND_URL
-        value: https://frontend.onrender.com
+        value: https://patient-frontend.onrender.com/v1/admin
       - key: CLINIC_NAME
         value: Bright Smile Dental
       - key: CLINIC_PHONE
@@ -289,12 +295,27 @@ services:
       - key: GEMINI_API_KEY
         sync: false
 
-  # Static frontend. The /api/* rewrite below is what makes the "frontend
-  # calls one relative origin unchanged" contract work once frontend and
-  # gateway are separate Render services — it MUST come before the SPA
-  # catch-all, and its destination must match the gateway's actual public
-  # URL (predictable as https://<gateway name>.onrender.com unless you've
-  # attached a custom domain).
+  # Staff admin dashboard. Built with `basePath: '/v1/admin'` (see
+  # frontend/next.config.mjs) so every internal link/asset URL *inside* the
+  # built HTML/JS is prefixed with /v1/admin — but `next build`'s static
+  # export still writes the actual files flat at the root of `out/`
+  # (out/index.html, out/_next/*, out/dentists.html, ...; basePath does NOT
+  # nest the output directory itself, only the references baked into it).
+  # So this service's own routing has to translate incoming /v1/admin/*
+  # requests back down to that flat layout:
+  #   - /v1/admin/_next/*  -> the real built assets at /_next/* (MUST come
+  #     before the catch-all below, or JS/CSS requests would get HTML back)
+  #   - /v1/admin/*        -> /index.html, the same SPA-fallback pattern
+  #     this route used pre-basePath, just under the new prefix
+  # This lets the app work identically whether it's hit directly at this
+  # service's own onrender.com URL or reverse-proxied in from
+  # patient-frontend's origin (see that service's /v1/admin/* rewrite
+  # below) — same static build either way, no separate basePath-less build
+  # needed. The /api/* rewrite (unchanged) is what makes the "frontend
+  # calls one relative origin" contract work once frontend and gateway are
+  # separate Render services — its destination must match the gateway's
+  # actual public URL (predictable as https://<gateway name>.onrender.com
+  # unless you've attached a custom domain).
   - type: web
     name: frontend
     runtime: static
@@ -306,14 +327,23 @@ services:
         source: /api/*
         destination: https://gateway.onrender.com/api/:splat
       - type: rewrite
+        source: /v1/admin/_next/*
+        destination: /_next/:splat
+      - type: rewrite
+        source: /v1/admin/*
+        destination: /index.html
+      - type: rewrite
         source: /*
         destination: /index.html
 
-  # Public patient-facing site — a second, independent static site sharing
-  # the same gateway/backend as `frontend` above (staff dashboard). Deployed
-  # separately so it can ship on its own release cadence without touching
-  # the staff app. Same /api/* rewrite contract; update the destination if
-  # the gateway's public URL ever changes (custom domain, renamed service).
+  # Public patient-facing site — the primary site, serving the root domain.
+  # Also fronts the staff admin dashboard at /v1/admin/* by reverse-proxying
+  # to the `frontend` service above, so both apps are reachable from this
+  # one origin/port in production (matching the local dev-proxy in
+  # scripts/dev-proxy.js). That rewrite MUST come before the `/*` catch-all
+  # below (first matching route wins) — its destination must match the
+  # `frontend` service's actual public URL, same caveat as the /api/*
+  # destination below matching the gateway's.
   - type: web
     name: patient-frontend
     runtime: static
@@ -324,6 +354,9 @@ services:
       - type: rewrite
         source: /api/*
         destination: https://gateway.onrender.com/api/:splat
+      - type: rewrite
+        source: /v1/admin/*
+        destination: https://frontend.onrender.com/v1/admin/:splat
       - type: rewrite
         source: /*
         destination: /index.html

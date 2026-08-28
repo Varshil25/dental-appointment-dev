@@ -7,7 +7,7 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   dentistServiceUrl: process.env.DENTIST_SERVICE_URL || 'http://localhost:4002',
   notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:4005',
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000/v1/admin',
   // Guards POST /internal/seed-user — same shared-token pattern as
   // appointment-service's POST /internal/appointments/seed.
   seedToken: process.env.SEED_TOKEN || 'dev-seed-token',

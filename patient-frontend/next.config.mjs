@@ -6,6 +6,12 @@ const nextConfig = {
   // the /api proxy is instead handled per-environment without one.
   output: 'export',
   images: { unoptimized: true },
+  // Repo root now has its own package-lock.json (for the local dev-proxy's
+  // deps), which without this makes Turbopack warn and guess at the
+  // workspace root from among the 3 lockfiles present.
+  turbopack: {
+    root: import.meta.dirname,
+  },
 };
 
 export default nextConfig;

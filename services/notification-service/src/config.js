@@ -10,6 +10,8 @@ export const config = {
     pass: process.env.SMTP_PASS || '',
   },
   mailFrom: process.env.MAIL_FROM || 'Dental Clinic <no-reply@example.com>',
+  // Auth via the main Auth Token — see sms.js's getClient() for why (API
+  // Keys require a paid Twilio account; this project runs on a Trial one).
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID || '',
     authToken: process.env.TWILIO_AUTH_TOKEN || '',

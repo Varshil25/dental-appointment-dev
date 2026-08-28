@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:internal": "next dev -p 3002",
     "build": "next build",
     "start": "npx serve out",
     "lint": "eslint"
