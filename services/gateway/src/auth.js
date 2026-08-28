@@ -67,7 +67,11 @@ export function requireOwnAppointmentOrAdmin(req, res, next) {
   if (req.user.role !== 'doctor') return res.status(403).json({ error: 'insufficient permissions' });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  // 3s was too short for a cold Render free-tier instance (can take
+  // 20-50s to answer its first request after spinning down from idle) —
+  // this doctor-ownership check would otherwise spuriously 503 the very
+  // first status-change/follow-up action after any period of inactivity.
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   fetch(`${config.services.appointment}/${req.params.id}`, { signal: controller.signal })
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`appointment-service responded ${r.status}`))))
     .then((appt) => {

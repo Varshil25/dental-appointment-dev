@@ -12,7 +12,13 @@ export async function listDentists() {
 
 async function fetchWithRetry(url, attempt = 0) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  // 3s was too short for a cold Render free-tier instance (20-50s to
+  // answer its first request after spinning down from idle) — 25s here
+  // rather than the 30s used elsewhere because this function retries once
+  // on failure, and the combined worst case (25s + 25s + the 500ms retry
+  // delay) needs to stay under gateway's own 55s proxy timeout for the
+  // outer request this is usually called from (POST /api/appointments).
+  const timeout = setTimeout(() => controller.abort(), 25_000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (res.status === 404) return null;

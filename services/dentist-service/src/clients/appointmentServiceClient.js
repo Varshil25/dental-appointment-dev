@@ -9,7 +9,10 @@ export async function getTakenIntervals(dentistId, dayStartISO, dayEndISO) {
     `?dentistId=${dentistId}&from=${encodeURIComponent(dayStartISO)}&to=${encodeURIComponent(dayEndISO)}` +
     `&status=booked,completed,no_show`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  // 3s was too short for a cold Render free-tier instance (20-50s to
+  // answer its first request after spinning down from idle) — every
+  // timeout in this file is bumped for the same reason.
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
@@ -30,7 +33,7 @@ export async function getFutureBookedAppointments(dentistId) {
   // Longer budget than getTakenIntervals: this endpoint composes patient
   // and dentist names in, which is 2 more network+DB hops (one of them
   // back into this very service) rather than one local query.
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
@@ -50,7 +53,7 @@ export async function getDaySchedule(dentistId, dayStartISO, dayEndISO) {
     `${config.appointmentServiceUrl}/internal/appointments/day` +
     `?dentistId=${dentistId}&from=${encodeURIComponent(dayStartISO)}&to=${encodeURIComponent(dayEndISO)}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
@@ -65,7 +68,7 @@ export async function getDaySchedule(dentistId, dayStartISO, dayEndISO) {
 // unchanged — this is a same-effect internal call, not a reimplementation.
 export async function cancelAppointment(id, reason) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(`${config.appointmentServiceUrl}/${id}/cancel`, {
       method: 'PATCH',

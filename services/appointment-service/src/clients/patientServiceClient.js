@@ -16,7 +16,12 @@ export async function listPatients() {
 
 async function fetchWithRetry(url, attempt = 0) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  // 3s was too short for a cold Render free-tier instance (20-50s to
+  // answer its first request after spinning down from idle) — 25s
+  // (matching dentistServiceClient.js, called in parallel with this) so
+  // the combined worst case with this function's own one retry stays
+  // under gateway's 55s proxy timeout for the outer request.
+  const timeout = setTimeout(() => controller.abort(), 25_000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (res.status === 404) return null;

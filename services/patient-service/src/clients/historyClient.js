@@ -1,6 +1,12 @@
 import { config } from '../config.js';
 
-async function getJSON(url, timeoutMs = 3000) {
+// 3s was too short for Render's free-tier cold start (a spun-down
+// service can take 20-50s to answer its first request) — see
+// report-service/src/clients/index.js for the measurements this was
+// tuned against. This path already fails *soft* below, but a spurious
+// timeout on a merely-cold service was needlessly dropping history that
+// would have arrived a few seconds later.
+async function getJSON(url, timeoutMs = 30_000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {

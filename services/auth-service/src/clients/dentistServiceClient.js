@@ -7,7 +7,9 @@ import { config } from '../config.js';
 // to an unverified dentist.
 export async function getDentist(id) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  // 3s is too short for a cold Render free-tier instance (can take
+  // 20-50s to answer its first request after spinning down from idle).
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(`${config.dentistServiceUrl}/internal/dentists/${id}`, { signal: controller.signal });
     if (res.status === 404) return null;
@@ -25,7 +27,7 @@ export async function getDentist(id) {
 // the dentist-application approval flow.
 export async function createDentist({ name, specialty, email, phone }) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(`${config.dentistServiceUrl}/`, {
       method: 'POST',
