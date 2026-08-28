@@ -4,21 +4,34 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { useRouter, usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
 
-// App Router's usePathname() does NOT strip `basePath` (that's a Pages
-// Router useRouter().pathname behavior, not App Router — confirmed against
-// next/dist/client/components/navigation.js, no basePath handling there).
 // This app is served under the `/v1/admin` basePath (see next.config.mjs)
 // whether hit directly at this service's own URL or reverse-proxied in
-// from patient-frontend's origin, so usePathname() always returns e.g.
-// "/v1/admin/login", never "/login" — every bare-path comparison below
-// (and in app-shell.jsx / app-sidebar.jsx) needs this stripped first, or
-// none of them ever match and the app gets stuck showing app-shell.jsx's
-// loading skeleton forever (discovered by actually opening the deployed
-// site — it never surfaced locally since dev mode's basePath handling
-// differs from the static export's).
+// from patient-frontend's origin. On this static export, next/navigation's
+// usePathname() does not reliably reflect the real runtime URL — in
+// production it stayed stuck on a build-time value that never matched any
+// bare-path comparison (BARE_PATHS, PUBLIC_PATHS, ADMIN_ONLY_PATHS), so
+// the app got stuck rendering app-shell.jsx's loading skeleton forever.
+// Went unnoticed locally since `next dev` doesn't hit this static-export
+// code path at all, and only surfaced by actually opening the deployed
+// site. useNormalizedPathname() below reads window.location.pathname
+// directly instead — the one source of truth that's unambiguous — and
+// still depends on usePathname() so it re-runs on client-side navigation.
 const BASE_PATH = '/v1/admin';
-export function stripBasePath(pathname) {
+function stripBasePath(pathname) {
   return pathname.startsWith(BASE_PATH) ? pathname.slice(BASE_PATH.length) || '/' : pathname;
+}
+
+function currentPathname() {
+  return typeof window !== 'undefined' ? stripBasePath(window.location.pathname) : '';
+}
+
+export function useNormalizedPathname() {
+  const [pathname, setPathname] = useState(currentPathname);
+  const nextPathname = usePathname();
+  useEffect(() => {
+    setPathname(currentPathname());
+  }, [nextPathname]);
+  return pathname;
 }
 
 // Token storage: localStorage, not an httpOnly cookie. This frontend is a
@@ -86,7 +99,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = stripBasePath(usePathname());
+  const pathname = useNormalizedPathname();
 
   const refresh = useCallback(() => {
     return fetchCurrentUser().then((u) => {
