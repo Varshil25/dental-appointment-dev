@@ -341,16 +341,17 @@ services:
   # URL — see the file-level comment above on why this can't be
   # `fromService` and why it needs re-checking after a fresh deploy.
   #
-  # NOTE on `:splat`: Render's substitution already includes the matched
-  # segment's leading slash (e.g. `/api/*` matching `/api/health` binds
-  # `:splat` to "/health", not "health") — a destination written as
-  # `.../api/:splat` therefore resolves to `.../api//health` (double
-  # slash), which Express's router treats as a *different, unmatched*
-  # path from `/api/health` and 404s even though the request reaches the
-  # right service. Confirmed by reproducing the exact same 404 with an
-  # explicit double slash directly against gateway. Every destination
-  # below omits the slash right before `:splat` for this reason — don't
-  # add it back in.
+  # NOTE on `:splat`: it MUST be preceded by a `/` in the destination (e.g.
+  # `.../api/:splat`) — write it directly after a literal path segment with
+  # no separator (`.../api:splat`) and Render doesn't recognize `:splat` as
+  # a placeholder at all; it forwards the literal 7-character string
+  # ":splat" instead (confirmed by logging the raw incoming req.url on
+  # gateway and seeing exactly "/api:splat" arrive, unsubstituted). The
+  # actual bug that broke every proxied /api/* request wasn't this — it was
+  # gateway missing `app.set('trust proxy', ...)`, which made
+  # express-rate-limit throw on the extra proxy hop's X-Forwarded-For
+  # header (see services/gateway/src/server.js) and everything fall
+  # through to the 404 handler before reaching its real route.
   - type: web
     name: frontend
     runtime: static
@@ -360,10 +361,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://gateway-6w4f.onrender.com/api:splat
+        destination: https://gateway-6w4f.onrender.com/api/:splat
       - type: rewrite
         source: /v1/admin/_next/*
-        destination: /_next:splat
+        destination: /_next/:splat
       - type: rewrite
         source: /v1/admin/*
         destination: /index.html
@@ -388,10 +389,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://gateway-6w4f.onrender.com/api:splat
+        destination: https://gateway-6w4f.onrender.com/api/:splat
       - type: rewrite
         source: /v1/admin/*
-        destination: https://frontend-kj54.onrender.com/v1/admin:splat
+        destination: https://frontend-kj54.onrender.com/v1/admin/:splat
       - type: rewrite
         source: /*
         destination: /index.html
