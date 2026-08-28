@@ -23,6 +23,13 @@ live in the yaml).
 > returns and the first deploy times out. See section (d) for what this
 > means for the hardcoded URLs after a fresh deploy.
 
+> **Email note:** Render's free plan blocks outbound SMTP (ports 25/465/587)
+> entirely — confirmed by every `notification-service` SMTP send attempt
+> timing out regardless of credentials. `notification-service` now sends
+> email via Resend's HTTP API (HTTPS, not blocked) instead when
+> `RESEND_API_KEY` is set — see section (c). Without it, no email sends on
+> this deploy, including staff OTP login codes.
+
 > **Plan note:** every service runs on Render's `free` plan (no card on
 > file, by choice). Consequence: free instances spin down after 15 minutes
 > idle. For `reminder-service` this means the `node-cron` reminder loop
@@ -83,9 +90,9 @@ want to keep across redeploys.
 - `REDIS_URL` — optional, same as above
 
 **notification-service**
-- `SMTP_PASS` — Gmail App Password (Google Account → Security → 2-Step Verification → App passwords), or your SMTP provider's password (e.g. Mailtrap)
-- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` — optional; Twilio console (console.twilio.com) → Account dashboard for the SID/Auth Token, Phone Numbers → Manage → Active Numbers for the from-number. Leave all three blank to disable SMS (email keeps working)
-- Also edit `render.yaml`'s `SMTP_HOST` / `SMTP_USER` plain values directly if you want real email — leaving them blank falls back to an Ethereal test inbox (preview URLs logged, nothing reaches real patients)
+- `RESEND_API_KEY` — **required for email to work at all on this deploy.** Free key at resend.com (3,000/month, no card). Render's free plan blocks outbound SMTP entirely (confirmed: every SMTP send attempt times out), so `SMTP_PASS`/`SMTP_HOST` below never work here regardless of how correctly they're filled in — don't bother configuring them unless you've moved this service off the free plan. Until you verify a sending domain in Resend, sandbox mode restricts `MAIL_FROM` to `onboarding@resend.dev` and only delivers to the address your Resend account is registered under — real patient delivery needs a verified domain there
+- `SMTP_PASS` — only relevant off Render's free plan; Gmail App Password or your SMTP provider's password (e.g. Mailtrap)
+- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` — optional; Twilio console (console.twilio.com) → Account dashboard for the SID/Auth Token, Phone Numbers → Manage → Active Numbers for the from-number. Leave all three blank to disable SMS (email keeps working). Twilio's API is HTTPS, not SMTP, so it isn't affected by the port-blocking above
 
 **auth-service**
 - `DATABASE_URL` — Neon console, `auth_service` database

@@ -180,9 +180,16 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.9.0
-      # Leave SMTP_* blank to fall back to an Ethereal test inbox (preview
-      # URLs logged, nothing reaches real patients). Fill in real SMTP
-      # (e.g. Mailtrap or a Gmail App Password) to send real email.
+      # Render's free plan blocks outbound SMTP (ports 25/465/587) entirely
+      # (https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports),
+      # so the SMTP_* vars below never work here even with correct
+      # credentials — confirmed by a "Connection timeout" from every send
+      # attempt. RESEND_API_KEY (HTTPS, not blocked) is what actually
+      # delivers email on this deploy; get a free key at resend.com (3,000
+      # emails/month, no card). SMTP_* stays configurable for local dev or
+      # a non-free-tier deploy, where it does work.
+      - key: RESEND_API_KEY
+        sync: false
       - key: SMTP_HOST
         value: ""
       - key: SMTP_PORT
@@ -193,6 +200,10 @@ services:
         value: ""
       - key: SMTP_PASS
         sync: false
+      # Until a sending domain is verified in Resend, sandbox mode only
+      # allows "onboarding@resend.dev" as the from-address (and only
+      # delivers to the email your Resend account itself is registered
+      # under) — real patient delivery needs a verified domain there.
       - key: MAIL_FROM
         value: "Bright Smile Dental <no-reply@brightsmile.example>"
       # Twilio SMS — optional, same fail-soft posture as SMTP above: leave
