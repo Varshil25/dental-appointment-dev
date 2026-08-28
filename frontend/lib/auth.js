@@ -4,6 +4,23 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { useRouter, usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
 
+// App Router's usePathname() does NOT strip `basePath` (that's a Pages
+// Router useRouter().pathname behavior, not App Router — confirmed against
+// next/dist/client/components/navigation.js, no basePath handling there).
+// This app is served under the `/v1/admin` basePath (see next.config.mjs)
+// whether hit directly at this service's own URL or reverse-proxied in
+// from patient-frontend's origin, so usePathname() always returns e.g.
+// "/v1/admin/login", never "/login" — every bare-path comparison below
+// (and in app-shell.jsx / app-sidebar.jsx) needs this stripped first, or
+// none of them ever match and the app gets stuck showing app-shell.jsx's
+// loading skeleton forever (discovered by actually opening the deployed
+// site — it never surfaced locally since dev mode's basePath handling
+// differs from the static export's).
+const BASE_PATH = '/v1/admin';
+export function stripBasePath(pathname) {
+  return pathname.startsWith(BASE_PATH) ? pathname.slice(BASE_PATH.length) || '/' : pathname;
+}
+
 // Token storage: localStorage, not an httpOnly cookie. This frontend is a
 // static export (`output: 'export'` in next.config.mjs) — there is no
 // Next.js server of its own to ever set a cookie from, in dev or in prod.
@@ -69,7 +86,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = stripBasePath(usePathname());
 
   const refresh = useCallback(() => {
     return fetchCurrentUser().then((u) => {

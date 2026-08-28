@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, CalendarPlus, CalendarClock, Users, Bell, Stethoscope, Settings, MessageSquare, LogOut, UserPlus } from 'lucide-react';
 import { ModeToggle } from '@/components/mode-toggle';
-import { useAuth } from '@/lib/auth';
+import { useAuth, stripBasePath } from '@/lib/auth';
 import { initials } from '@/lib/initials';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,7 @@ const ADMIN_LINKS = [
 ];
 
 export function AppSidebar() {
-  const pathname = usePathname();
+  const pathname = stripBasePath(usePathname());
   const { user, logout } = useAuth();
   if (!user) return null;
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/lib/auth';
+import { useAuth, stripBasePath } from '@/lib/auth';
 import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
@@ -17,7 +17,7 @@ const BARE_PATHS = ['/login', '/forgot-password', '/reset-password'];
 // briefly see an admin page's content flash before the redirect in
 // lib/auth.js's route-protection effect kicks in.
 export function AppShell({ children }) {
-  const pathname = usePathname();
+  const pathname = stripBasePath(usePathname());
   const { user, loading } = useAuth();
   const bare = BARE_PATHS.includes(pathname);
 
