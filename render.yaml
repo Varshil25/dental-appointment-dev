@@ -6,19 +6,21 @@
 # reference before deploying: https://render.com/docs/blueprint-spec
 #
 # Data lives in Neon Postgres now (see DATABASE_URL below), not on a local
-# disk, so none of these services need an attached disk. patient/dentist/
-# appointment/reminder-service are still kept on `starter` rather than
-# `free`, though: Render's free instance type spins down after 15 minutes
-# idle, which for reminder-service specifically would silently stop the
-# node-cron reminder dispatch loop from firing — defeating the whole
-# "automated reminders" feature. notification/report/gateway are left on
-# `free` since nothing breaks if they cold-start on the next request.
+# disk, so none of these services need an attached disk. Every service is
+# on Render's `free` plan (no card on file, by explicit choice) — the
+# tradeoff: Render's free instance type spins down after 15 minutes idle,
+# which for reminder-service specifically means the node-cron reminder
+# dispatch loop silently stops firing while it's asleep and only resumes
+# once something wakes the service back up (e.g. the next inbound request,
+# or a booking that calls it). Move reminder-service (and ideally patient/
+# dentist/appointment-service, which it depends on) to `starter` once
+# billing is set up, to keep reminders firing on schedule.
 #
 # DATABASE_URL values below are placeholders — replace each with that
-# service's own Neon connection string (one Neon project, 4 separate
+# service's own Neon connection string (one Neon project, 5 separate
 # databases: patient_service / dentist_service / appointment_service /
-# reminder_service) via the Render dashboard, not by editing this file,
-# since they're secrets.
+# reminder_service / auth_service) via the Render dashboard, not by editing
+# this file, since they're secrets.
 #
 # REDIS_URL (also a secret, set via the dashboard) is optional on every
 # service that declares it — each one fails open and works identically
@@ -30,7 +32,7 @@ services:
   - type: web
     name: patient-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: services/patient-service
     buildCommand: npm install
@@ -51,7 +53,7 @@ services:
   - type: web
     name: dentist-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: services/dentist-service
     buildCommand: npm install
@@ -83,7 +85,7 @@ services:
   - type: web
     name: appointment-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: services/appointment-service
     buildCommand: npm install
@@ -116,7 +118,7 @@ services:
   - type: web
     name: reminder-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: services/reminder-service
     buildCommand: npm install
@@ -185,7 +187,7 @@ services:
   - type: web
     name: auth-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: services/auth-service
     buildCommand: npm install

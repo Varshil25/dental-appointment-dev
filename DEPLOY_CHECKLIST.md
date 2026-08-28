@@ -11,6 +11,14 @@ live in the yaml).
 > consumer. There is no RabbitMQ/CloudAMQP step in this checklist — skip any
 > instructions elsewhere that mention it, they don't apply to this repo.
 
+> **Plan note:** every service runs on Render's `free` plan (no card on
+> file, by choice). Consequence: free instances spin down after 15 minutes
+> idle. For `reminder-service` this means the `node-cron` reminder loop
+> silently stops firing while it's asleep, and only resumes once something
+> wakes the service back up. If reminders need to fire reliably on a
+> schedule, add a card and move `reminder-service` (and its dependencies —
+> patient/dentist/appointment-service) to `starter` later.
+
 ## a) Neon — create the databases
 
 One Neon project, five databases (one per stateful service — `report-service`
@@ -111,4 +119,4 @@ against the assumptions above. If any differ:
 3. **Admin dashboard** — root domain `/v1/admin` loads the staff login page (not a 404/blank page — confirms the reverse-proxy rewrite and the static export's `basePath` are both wired correctly)
 4. **Test booking end-to-end** — as a visitor: pick a dentist → pick a slot → book with a real-ish name/email/phone → confirm the appointment comes back with a booking id and a confirmation email is received
 5. **Staff OTP login** — at `/v1/admin/login`: enter the admin/doctor password → a 6-digit code arrives by email within ~1 minute → enter it → dashboard loads and shows the logged-in user
-6. **Reminder dispatch fires** — after the test booking in (4), either wait for `reminder-service`'s cron to reach a `scheduled_for` time, or (faster) log in as admin and use the dashboard's Reminders page "send now" action (`POST /api/reminders/:id/send`) — confirm the reminder's status flips from `pending` to `sent` and the email/SMS actually arrives. This is the real async path in this codebase; there's no queue to check.
+6. **Reminder dispatch fires** — after the test booking in (4), either wait for `reminder-service`'s cron to reach a `scheduled_for` time, or (faster) log in as admin and use the dashboard's Reminders page "send now" action (`POST /api/reminders/:id/send`) — confirm the reminder's status flips from `pending` to `sent` and the email/SMS actually arrives. This is the real async path in this codebase; there's no queue to check. On the free plan, hit `reminder-service`'s health endpoint first if it's been idle — a cold start takes a few seconds before the "send now" call will go through.
