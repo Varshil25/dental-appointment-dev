@@ -30,12 +30,6 @@ app.use(cors());
 // worked fine.
 app.set('trust proxy', 1);
 
-// TEMP DIAGNOSTIC 3 — remove after debugging.
-app.use((req, _res, next) => {
-  console.log(`[diag3] method=${req.method} url=${JSON.stringify(req.url)} xff=${JSON.stringify(req.headers['x-forwarded-for'])}`);
-  next();
-});
-
 // Registered before the proxies below so it's answered by the gateway
 // itself rather than forwarded anywhere.
 app.get('/api/health', aggregatedHealth);
