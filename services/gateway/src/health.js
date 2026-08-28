@@ -1,17 +1,39 @@
 import { config } from './config.js';
 
+// AbortController alone isn't a reliable upper bound here: aborting a fetch
+// that's still mid-DNS-lookup/TLS-handshake against a cold Render free-tier
+// instance doesn't always tear the socket down promptly, so a stuck
+// downstream service could keep this pending well past the 2s signal.
+// Racing against an independent timer guarantees aggregatedHealth() below
+// always settles quickly regardless of what the abort actually managed to
+// cancel — which matters because this used to be gateway's own Render
+// healthCheckPath, and a slow /api/health made Render mark gateway itself
+// unhealthy and stop routing traffic to it even though the process was
+// fine (see render.yaml — healthCheckPath now points at /api/live instead,
+// which never touches a downstream service, but this endpoint still backs
+// the admin dashboard's own health view so it needs to stay bounded too).
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ ok: false, body: null }), ms);
+    promise.then((v) => { clearTimeout(t); resolve(v); });
+  });
+}
+
 async function fetchHealth(baseUrl) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2000);
-  try {
-    const res = await fetch(`${baseUrl}/health`, { signal: controller.signal });
-    if (!res.ok) return { ok: false, body: null };
-    return { ok: true, body: await res.json().catch(() => null) };
-  } catch {
-    return { ok: false, body: null };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const attempt = (async () => {
+    try {
+      const res = await fetch(`${baseUrl}/health`, { signal: controller.signal });
+      if (!res.ok) return { ok: false, body: null };
+      return { ok: true, body: await res.json().catch(() => null) };
+    } catch {
+      return { ok: false, body: null };
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+  return withTimeout(attempt, 3000);
 }
 
 export async function aggregatedHealth(_req, res) {

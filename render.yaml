@@ -36,8 +36,8 @@
 # (https://render.com/docs/private-network — "Free web services ... can't
 # receive [private network requests]"). Every service here is on `free`,
 # so any service-to-service call over the private network — including
-# gateway's own healthCheckPath, which fans out to every backend service —
-# just hangs forever, and the deploy's health check times out. Routing
+# gateway's own aggregated health check (src/health.js), which fans out
+# to every backend service — just hangs forever. Routing
 # these calls over the public internet instead works fine on `free`, at
 # the cost of a bit more latency than the private network would give.
 # Move back to `fromService`/`hostport` if/when every service is upgraded
@@ -304,7 +304,14 @@ services:
     rootDir: services/gateway
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /api/health
+    # NOT /api/health — that endpoint fans out to every backend service
+    # (see src/health.js) and, with several free-tier services cold at
+    # once, could run long enough that Render decided gateway itself was
+    # unhealthy and pulled it out of rotation (traffic silently blackholed
+    # even though the process was up). /api/live is a zero-dependency
+    # liveness check that can only ever be as slow as gateway's own event
+    # loop.
+    healthCheckPath: /api/live
     envVars:
       - key: NODE_VERSION
         value: 22.9.0

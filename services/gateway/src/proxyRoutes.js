@@ -42,6 +42,15 @@ export function mountProxies(app) {
       createProxyMiddleware({
         target,
         changeOrigin: true,
+        // Without these, a downstream service that never responds (a
+        // stalled cold start, a wedged connection) leaves the proxied
+        // request hanging indefinitely — no error, no timeout, just an
+        // open socket forever. proxyTimeout bounds the gateway->target
+        // leg; timeout bounds the client->gateway leg so the client socket
+        // doesn't itself sit open past that. 55s is generous enough to
+        // cover a free-tier cold start chain but still finite.
+        proxyTimeout: 55_000,
+        timeout: 60_000,
         // Express strips `prefix` from req.url before this middleware ever
         // sees it, so the `{regex: replacement}` form below — whose regex
         // is anchored on that now-absent prefix — never actually matches;

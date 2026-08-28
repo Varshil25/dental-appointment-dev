@@ -30,8 +30,18 @@ app.use(cors());
 // worked fine.
 app.set('trust proxy', 1);
 
+// Render's healthCheckPath (render.yaml) — deliberately zero downstream
+// calls. /api/health below fans out to every backend service and used to
+// be what Render pinged; if enough of those were cold at once, that check
+// ran long enough that Render decided gateway itself was unhealthy and
+// stopped routing traffic to it, even though the process was up and idle.
+// This one can only ever be as slow as gateway's own event loop.
+app.get('/api/live', (_req, res) => res.json({ ok: true }));
+
 // Registered before the proxies below so it's answered by the gateway
-// itself rather than forwarded anywhere.
+// itself rather than forwarded anywhere. Powers the admin dashboard's own
+// health view (see frontend/pages/reminders.jsx) — not Render's liveness
+// probe, see /api/live above.
 app.get('/api/health', aggregatedHealth);
 mountDocs(app);
 
