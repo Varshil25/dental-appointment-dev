@@ -17,6 +17,12 @@ import {
 const app = express();
 app.use(cors());
 
+// TEMP DIAGNOSTIC — remove after debugging the proxy 404.
+app.use((req, _res, next) => {
+  console.log(`[diag] method=${req.method} url=${JSON.stringify(req.url)} headers=${JSON.stringify(req.headers)}`);
+  next();
+});
+
 // Registered before the proxies below so it's answered by the gateway
 // itself rather than forwarded anywhere.
 app.get('/api/health', aggregatedHealth);
