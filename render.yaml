@@ -428,9 +428,25 @@ services:
       - type: rewrite
         source: /v1/admin/_next/*
         destination: https://frontend-kj54.onrender.com/_next/*
+      # Routes every other admin PAGE straight to frontend's own flat,
+      # un-prefixed static file for that route (out/login.html,
+      # out/dentists.html, ...) instead of through frontend's own
+      # /v1/admin/* -> /index.html rule. That rule is a single-page-app
+      # catch-all, but this is a Next.js App Router *static export* — every
+      # route gets its own separately pre-rendered HTML file, not one SPA
+      # shell — so unconditionally serving /index.html for every path under
+      # /v1/admin/* actually served the DASHBOARD route's ('/') markup for
+      # every admin page, /login included. Once the earlier hydration fix
+      # made the page actually mount, this surfaced as the dashboard's own
+      # loading skeleton rendering at the /login URL, not a login form —
+      # found by inspecting the mounted React tree, not just eyeballing a
+      # blank screen. Stripping the /v1/admin prefix and letting frontend's
+      # own normal static-file serving resolve the real per-route file
+      # fixes it; same reasoning as the asset rule above for why this must
+      # be a cross-service external URL, not a local path.
       - type: rewrite
         source: /v1/admin/*
-        destination: https://frontend-kj54.onrender.com/v1/admin/*
+        destination: https://frontend-kj54.onrender.com/*
       - type: rewrite
         source: /*
         destination: /index.html
