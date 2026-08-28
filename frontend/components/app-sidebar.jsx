@@ -1,9 +1,8 @@
-'use client';
-
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { LayoutDashboard, CalendarPlus, CalendarClock, Users, Bell, Stethoscope, Settings, MessageSquare, LogOut, UserPlus } from 'lucide-react';
 import { ModeToggle } from '@/components/mode-toggle';
-import { useAuth, useNormalizedPathname } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 import { initials } from '@/lib/initials';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -40,7 +39,7 @@ const ADMIN_LINKS = [
 ];
 
 export function AppSidebar() {
-  const pathname = useNormalizedPathname();
+  const { pathname } = useRouter();
   const { user, logout } = useAuth();
   if (!user) return null;
 

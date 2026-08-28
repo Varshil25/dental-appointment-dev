@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import { api, fmtDateTime } from '@/lib/api';
 import { useToast } from '@/lib/use-toast';

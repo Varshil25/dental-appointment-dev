@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import { api, fmtDateTime, fmtTime } from '@/lib/api';
 import { useAuth } from '@/lib/auth';

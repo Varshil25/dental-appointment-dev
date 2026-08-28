@@ -1,7 +1,5 @@
-'use client';
-
-import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
 import { api, fmtDateTime } from '@/lib/api';
 import { useToast } from '@/lib/use-toast';
 import { DAY_LABELS } from '@/lib/days';
@@ -26,16 +24,8 @@ import { ArrowLeft, User, CalendarClock, TriangleAlert } from 'lucide-react';
 const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 export default function DentistDetailPage() {
-  return (
-    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-      <DentistDetail />
-    </Suspense>
-  );
-}
-
-function DentistDetail() {
-  const id = useSearchParams().get('id');
   const router = useRouter();
+  const id = router.query.id;
   const notify = useToast();
 
   const [dentist, setDentist] = useState(null);

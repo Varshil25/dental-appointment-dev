@@ -1,38 +1,6 @@
-'use client';
-
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { api } from '@/lib/api';
-
-// This app is served under the `/v1/admin` basePath (see next.config.mjs)
-// whether hit directly at this service's own URL or reverse-proxied in
-// from patient-frontend's origin. On this static export, next/navigation's
-// usePathname() does not reliably reflect the real runtime URL — in
-// production it stayed stuck on a build-time value that never matched any
-// bare-path comparison (BARE_PATHS, PUBLIC_PATHS, ADMIN_ONLY_PATHS), so
-// the app got stuck rendering app-shell.jsx's loading skeleton forever.
-// Went unnoticed locally since `next dev` doesn't hit this static-export
-// code path at all, and only surfaced by actually opening the deployed
-// site. useNormalizedPathname() below reads window.location.pathname
-// directly instead — the one source of truth that's unambiguous — and
-// still depends on usePathname() so it re-runs on client-side navigation.
-const BASE_PATH = '/v1/admin';
-function stripBasePath(pathname) {
-  return pathname.startsWith(BASE_PATH) ? pathname.slice(BASE_PATH.length) || '/' : pathname;
-}
-
-function currentPathname() {
-  return typeof window !== 'undefined' ? stripBasePath(window.location.pathname) : '';
-}
-
-export function useNormalizedPathname() {
-  const [pathname, setPathname] = useState(currentPathname);
-  const nextPathname = usePathname();
-  useEffect(() => {
-    setPathname(currentPathname());
-  }, [nextPathname]);
-  return pathname;
-}
 
 // Token storage: localStorage, not an httpOnly cookie. This frontend is a
 // static export (`output: 'export'` in next.config.mjs) — there is no
@@ -99,7 +67,12 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = useNormalizedPathname();
+  // Pages Router's router.pathname is the file-route path with basePath,
+  // locale, and trailing slash already excluded (unlike App Router's
+  // usePathname(), which doesn't strip basePath at all — the reason this
+  // app was on the App Router originally got stuck rendering the wrong
+  // page forever under the /v1/admin basePath). No stripping needed here.
+  const pathname = router.pathname;
 
   const refresh = useCallback(() => {
     return fetchCurrentUser().then((u) => {
@@ -131,13 +104,7 @@ export function AuthProvider({ children }) {
         return;
       }
       if (pathname === '/dentists/detail') {
-        // Read the query string directly rather than via useSearchParams()
-        // — that hook requires a <Suspense> boundary during Next's static
-        // export build, and AuthProvider wraps every page in the app, so
-        // pulling it in here would force every single page into that
-        // boundary. This runs client-side only (inside an effect, after
-        // mount), where window.location is always available.
-        const id = new URLSearchParams(window.location.search).get('id');
+        const id = router.query.id;
         if (id && String(id) !== String(user.dentist_id)) {
           router.replace(`/dentists/detail?id=${user.dentist_id}`);
         }
