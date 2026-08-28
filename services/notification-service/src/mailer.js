@@ -1,8 +1,20 @@
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
 
-// Resend's HTTP API — no SDK dependency needed for one endpoint. See
-// config.js for why this is preferred over SMTP on Render specifically.
+// Resend's sandbox mode (no verified sending domain) hard-rejects any
+// recipient except the account owner's own address — every OTHER staff
+// login (any account whose email isn't that one address) would otherwise
+// be unable to receive a login code at all until a real domain is
+// verified at resend.com/domains. That's a one-time manual step outside
+// this codebase (DNS records at a domain we don't have here), so until
+// it's done, sendMail() below falls back to logging the full message
+// (OTP/reset link included) to this service's own console — retrievable
+// from Render's Logs tab — instead of hard-failing the request. Matched
+// narrowly on Resend's actual wording so a real delivery failure (bad API
+// key, Resend outage, etc.) still surfaces as a failure rather than being
+// silently swallowed by this fallback.
+const SANDBOX_RESTRICTION_RE = /own email address/i;
+
 async function sendViaResend(to, { subject, text, html }) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -14,8 +26,13 @@ async function sendViaResend(to, { subject, text, html }) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    // Resend's sandbox restriction (no verified sending domain yet): can
-    // only send to the account owner's own address, from onboarding@resend.dev.
+    if (SANDBOX_RESTRICTION_RE.test(data.message || '')) {
+      console.log(
+        `\n[mailer] Resend sandbox blocked delivery to ${to} (no verified domain yet) — logging content instead:\n` +
+          `[mailer] Subject: ${subject}\n[mailer] ${text}\n`
+      );
+      return { ok: true, detail: 'logged-fallback: recipient blocked by Resend sandbox, see server logs' };
+    }
     throw new Error(data.message || `Resend responded ${res.status}`);
   }
   return { ok: true, detail: data.id };
