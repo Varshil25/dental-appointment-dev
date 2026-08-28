@@ -38,6 +38,37 @@ live in the yaml).
 > schedule, add a card and move `reminder-service` (and its dependencies —
 > patient/dentist/appointment-service) to `starter` later.
 
+> **KNOWN ISSUE — admin dashboard client-side routing:** `/v1/admin/login`
+> (and presumably every other admin route) loads and hydrates correctly —
+> the server sends the right per-route HTML (verified directly via curl) —
+> but Next's client-side router then silently swaps in the DASHBOARD
+> route's ('/') content instead, while the URL bar stays on `/login`. Not a
+> redirect; confirmed by inspecting the live React tree (right URL, wrong
+> mounted component) after ruling out every render.yaml/rewrite-level cause
+> (all three earlier routing bugs in this file are genuinely fixed — asset
+> loading, page-vs-SPA-catchall routing, all verified via curl before this
+> was found). This matches a documented Next.js App Router limitation:
+> static-export client-side navigation fetches per-route RSC payloads, and
+> when that fetch can't resolve correctly — here, likely `basePath`
+> (`/v1/admin`) combined with being served through a cross-origin reverse
+> proxy — the router falls back silently instead of erroring
+> (https://github.com/vercel/next.js/issues/59986 is the same class of
+> bug). Options to actually fix, not yet attempted:
+> 1. Force full page reloads for admin-app navigation instead of Next's
+>    client-side router (e.g. plain `<a>` tags / `window.location`
+>    assignments instead of `next/link` and `router.push/replace`) —
+>    sidesteps RSC payload fetching entirely, at the cost of full reloads
+>    between admin pages.
+> 2. Migrate `frontend` from the App Router to the Pages Router, which
+>    historically handles `basePath` more reliably and doesn't do
+>    RSC-payload-based client navigation the same way.
+> 3. Give the admin app its own real subdomain instead of a `basePath`
+>    path-prefix nested behind a reverse proxy, removing the
+>    `basePath`+cross-origin-proxy combination that's the likely trigger.
+> Reproduces both via patient-frontend's proxy AND hitting `frontend`'s own
+> onrender.com URL directly, in a fresh browser tab — not proxy-specific,
+> not a caching/tab-state artifact.
+
 ## a) Neon — create the databases
 
 One Neon project, five databases (one per stateful service — `report-service`
@@ -146,7 +177,7 @@ suffix).
 
 1. **Gateway health** — `GET https://<gateway-url>/api/health` → `{"ok":true, "services": {..all true..}}`
 2. **Patient-frontend landing page** — root domain loads, dentist list and clinic info render
-3. **Admin dashboard** — root domain `/v1/admin` loads the staff login page (not a 404/blank page — confirms the reverse-proxy rewrite and the static export's `basePath` are both wired correctly)
+3. **Admin dashboard** — root domain `/v1/admin/login` currently shows the dashboard's own loading skeleton instead of the login form (URL stays correct, wrong component mounts) — see the KNOWN ISSUE note above. Not yet fixed as of this checklist
 4. **Test booking end-to-end** — as a visitor: pick a dentist → pick a slot → book with a real-ish name/email/phone → confirm the appointment comes back with a booking id and a confirmation email is received
 5. **Staff OTP login** — at `/v1/admin/login`: enter the admin/doctor password → a 6-digit code arrives by email within ~1 minute → enter it → dashboard loads and shows the logged-in user. **Until a sending domain is verified in Resend**, this only works logging in as the staff account whose email matches the one your Resend account is registered under — every other account's OTP send fails with a 403 from Resend (`could not send the login code email`, visible in gateway's response). Verify a domain at resend.com/domains to lift this for all staff accounts
 6. **Reminder dispatch fires** — after the test booking in (4), either wait for `reminder-service`'s cron to reach a `scheduled_for` time, or (faster) log in as admin and use the dashboard's Reminders page "send now" action (`POST /api/reminders/:id/send`) — confirm the reminder's status flips from `pending` to `sent` and the email/SMS actually arrives. This is the real async path in this codebase; there's no queue to check. On the free plan, hit `reminder-service`'s health endpoint first if it's been idle — a cold start takes a few seconds before the "send now" call will go through.
