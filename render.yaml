@@ -340,6 +340,17 @@ services:
   # needed. The /api/* rewrite's destination is the gateway's actual public
   # URL — see the file-level comment above on why this can't be
   # `fromService` and why it needs re-checking after a fresh deploy.
+  #
+  # NOTE on `:splat`: Render's substitution already includes the matched
+  # segment's leading slash (e.g. `/api/*` matching `/api/health` binds
+  # `:splat` to "/health", not "health") — a destination written as
+  # `.../api/:splat` therefore resolves to `.../api//health` (double
+  # slash), which Express's router treats as a *different, unmatched*
+  # path from `/api/health` and 404s even though the request reaches the
+  # right service. Confirmed by reproducing the exact same 404 with an
+  # explicit double slash directly against gateway. Every destination
+  # below omits the slash right before `:splat` for this reason — don't
+  # add it back in.
   - type: web
     name: frontend
     runtime: static
@@ -349,10 +360,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://gateway-6w4f.onrender.com/api/:splat
+        destination: https://gateway-6w4f.onrender.com/api:splat
       - type: rewrite
         source: /v1/admin/_next/*
-        destination: /_next/:splat
+        destination: /_next:splat
       - type: rewrite
         source: /v1/admin/*
         destination: /index.html
@@ -377,10 +388,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://gateway-6w4f.onrender.com/api/:splat
+        destination: https://gateway-6w4f.onrender.com/api:splat
       - type: rewrite
         source: /v1/admin/*
-        destination: https://frontend-kj54.onrender.com/v1/admin/:splat
+        destination: https://frontend-kj54.onrender.com/v1/admin:splat
       - type: rewrite
         source: /*
         destination: /index.html
