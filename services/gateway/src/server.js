@@ -17,11 +17,18 @@ import {
 const app = express();
 app.use(cors());
 
-// TEMP DIAGNOSTIC — remove after debugging the proxy 404.
-app.use((req, _res, next) => {
-  console.log(`[diag] method=${req.method} url=${JSON.stringify(req.url)} headers=${JSON.stringify(req.headers)}`);
-  next();
-});
+// Trust the first hop's X-Forwarded-For (Render's own edge, and — for
+// requests arriving via the frontends' static-site /api/* rewrite — the
+// rewrite's proxying layer). Without this, express-rate-limit throws
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on any request that carries an
+// X-Forwarded-For header it doesn't trust, which every request proxied
+// in from patient-frontend/frontend does — that crashed generalLimiter
+// (and every other limiter below) before it could call next(), which is
+// why those requests fell through to the 404 catch-all instead of ever
+// reaching their actual route, even though the route existed and a
+// request hitting gateway directly (no proxy hop, no untrusted XFF)
+// worked fine.
+app.set('trust proxy', 1);
 
 // Registered before the proxies below so it's answered by the gateway
 // itself rather than forwarded anywhere.
