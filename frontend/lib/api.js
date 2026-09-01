@@ -84,6 +84,7 @@ export const api = {
     ).toString();
     return request(`/appointments${qs ? `?${qs}` : ''}`);
   },
+  getAppointment: (id) => request(`/appointments/${id}`),
   book: (body) => request('/appointments', { method: 'POST', body: JSON.stringify(body) }),
   reschedule: (id, body) =>
     request(`/appointments/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -113,6 +114,33 @@ export const api = {
   approveDentistApplication: (id) => request(`/dentist-applications/${id}/approve`, { method: 'POST' }),
   rejectDentistApplication: (id, rejection_reason) =>
     request(`/dentist-applications/${id}/reject`, { method: 'POST', body: JSON.stringify({ rejection_reason }) }),
+
+  // Invoices / Billing — admin-only, enforced by the gateway. Invoices are
+  // 1:1 with an appointment (see appointment-service's db.js) and record a
+  // payment taken outside this system (cash/card/insurance at the desk);
+  // nothing here charges anything.
+  listInvoices: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+    ).toString();
+    return request(`/invoices${qs ? `?${qs}` : ''}`);
+  },
+  getInvoice: (id) => request(`/invoices/${id}`),
+  createInvoice: (body) => request('/invoices', { method: 'POST', body: JSON.stringify(body) }),
+  markInvoicePaid: (id, payment_method) =>
+    request(`/invoices/${id}/mark-paid`, { method: 'PATCH', body: JSON.stringify({ payment_method }) }),
+  // Binary response (application/pdf), not JSON — bypasses request()'s
+  // res.json() parsing and returns the raw Blob for the caller to save.
+  // Unlike summaryPdf below, this route is admin-gated, so the auth header
+  // has to ride along explicitly.
+  invoicePdf: async (id) => {
+    const res = await fetch(`${API_BASE}/api/invoices/${id}/pdf`, { headers: authHeader() });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Request failed (${res.status})`);
+    }
+    return res.blob();
+  },
 
   // Reports
   summary: (params = {}) => {

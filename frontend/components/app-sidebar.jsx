@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { LayoutDashboard, CalendarPlus, CalendarClock, Users, Bell, Stethoscope, Settings, MessageSquare, LogOut, UserPlus } from 'lucide-react';
+import { LayoutDashboard, CalendarPlus, CalendarClock, Users, Bell, Stethoscope, Settings, MessageSquare, LogOut, UserPlus, Receipt } from 'lucide-react';
 import { ModeToggle } from '@/components/mode-toggle';
 import { useAuth } from '@/lib/auth';
 import { initials } from '@/lib/initials';
@@ -33,6 +33,7 @@ const ADMIN_LINKS = [
   ['/dentists', 'Dentists', Stethoscope],
   ['/dentist-applications', 'Doctor Applications', UserPlus],
   ['/patients', 'Patients', Users],
+  ['/billing', 'Billing', Receipt],
   ['/reminders', 'Reminders', Bell],
   ['/inquiries', 'Inquiries', MessageSquare],
   ['/clinic-settings', 'Clinic Settings', Settings],

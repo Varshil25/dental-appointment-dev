@@ -3,8 +3,17 @@ import { listPatients } from './clients/patientServiceClient.js';
 import { listDentists } from './clients/dentistServiceClient.js';
 import { cached } from './cache.js';
 
+// invoice_id/invoice_status are left-joined in from invoices (same DB, see
+// db.js) so the frontend can show "Add Invoice" vs "View Invoice" on a
+// completed appointment without a second round-trip. Aliased rather than
+// selected via `i.*` since both tables have a `status` column.
+const APPT_SELECT = `
+  SELECT a.*, i.id AS invoice_id, i.status AS invoice_status
+    FROM appointments a
+    LEFT JOIN invoices i ON i.appointment_id = a.id`;
+
 export async function getAppointmentLocal(id) {
-  const { rows } = await pool.query('SELECT * FROM appointments WHERE id = $1', [id]);
+  const { rows } = await pool.query(`${APPT_SELECT} WHERE a.id = $1`, [id]);
   return rows[0] || null;
 }
 
@@ -14,15 +23,15 @@ export async function listAppointmentsLocal({ status, from, to, dentistId, patie
   let i = 1;
   if (status) {
     const statuses = String(status).split(',').map((s) => s.trim());
-    clauses.push(`status = ANY($${i++})`);
+    clauses.push(`a.status = ANY($${i++})`);
     params.push(statuses);
   }
-  if (from) { clauses.push(`start_time >= $${i++}`); params.push(from); }
-  if (to) { clauses.push(`start_time <= $${i++}`); params.push(to); }
-  if (dentistId) { clauses.push(`dentist_id = $${i++}`); params.push(dentistId); }
-  if (patientId) { clauses.push(`patient_id = $${i++}`); params.push(patientId); }
+  if (from) { clauses.push(`a.start_time >= $${i++}`); params.push(from); }
+  if (to) { clauses.push(`a.start_time <= $${i++}`); params.push(to); }
+  if (dentistId) { clauses.push(`a.dentist_id = $${i++}`); params.push(dentistId); }
+  if (patientId) { clauses.push(`a.patient_id = $${i++}`); params.push(patientId); }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const { rows } = await pool.query(`SELECT * FROM appointments ${where} ORDER BY start_time ASC`, params);
+  const { rows } = await pool.query(`${APPT_SELECT} ${where} ORDER BY a.start_time ASC`, params);
   return rows;
 }
 

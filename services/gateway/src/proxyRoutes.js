@@ -18,6 +18,7 @@ const routeTable = [
   ['/api/patients', config.services.patient, ''],
   ['/api/dentists', config.services.dentist, ''],
   ['/api/appointments', config.services.appointment, ''],
+  ['/api/invoices', config.services.appointment, ''],
   ['/api/reminders', config.services.reminder, ''],
   ['/api/reports', config.services.report, ''],
   ['/api/clinic-profile', config.services.dentist, () => '/clinic-profile'],

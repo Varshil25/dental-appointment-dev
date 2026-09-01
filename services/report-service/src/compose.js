@@ -5,6 +5,7 @@ import {
   listDentists,
   remindersSummary,
   patientsCount,
+  revenueSummary,
 } from './clients/index.js';
 import { cached } from './cache.js';
 
@@ -25,13 +26,14 @@ export async function buildSummary({ from, to } = {}) {
 }
 
 async function buildSummaryUncached({ from, to } = {}) {
-  const [summary, perDentistRaw, timeseries, dentists, reminders, patients] = await Promise.all([
+  const [summary, perDentistRaw, timeseries, dentists, reminders, patients, revenue] = await Promise.all([
     appointmentSummary(from, to),
     perDentistSummary(from, to),
     appointmentTimeseries(14),
     listDentists(),
     remindersSummary(),
     patientsCount(),
+    revenueSummary(from, to),
   ]);
 
   const { counts, total, upcoming } = summary;
@@ -58,6 +60,8 @@ async function buildSummaryUncached({ from, to } = {}) {
     upcoming,
     remindersSent: reminders.sent,
     patients: patients.n,
+    totalRevenue: revenue.totalRevenue,
+    paidInvoiceCount: revenue.paidInvoiceCount,
     perDentist,
     today: timeseries.today,
     thisMonth: timeseries.thisMonth,

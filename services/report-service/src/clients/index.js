@@ -37,6 +37,11 @@ export const appointmentTimeseries = (days = 14) =>
 
 export const listDentists = () => getJSON(`${config.dentistServiceUrl}/internal/dentists`);
 
+export const revenueSummary = (from, to) => {
+  const qs = new URLSearchParams({ ...(from && { from }), ...(to && { to }) }).toString();
+  return getJSON(`${config.appointmentServiceUrl}/internal/invoices/revenue-summary${qs ? `?${qs}` : ''}`);
+};
+
 export const remindersSummary = () => getJSON(`${config.reminderServiceUrl}/internal/reminders-summary`);
 
 export const patientsCount = () => getJSON(`${config.patientServiceUrl}/internal/patients-count`);

@@ -134,6 +134,13 @@ app.patch('/api/inquiries/:id/status', requireAuth, requireRole('admin'));
 app.use('/api/reminders', requireAuth, requireRole('admin'));
 app.use('/api/reports', requireAuth, requireRole('admin'));
 
+// Invoices/billing — admin-only in full, same posture as reminders/reports
+// above (no dentist-scoping story here either, and this is a front-desk/
+// admin concern, not a per-doctor one). Patients don't get an account in
+// this app at all, so there's no patient-side invoice view either — only
+// the admin dashboard reads/writes these.
+app.use('/api/invoices', requireAuth, requireRole('admin'));
+
 // Admin-only account creation — auth-service also independently re-checks
 // the token itself (see its middleware/auth.js), so this is defense in
 // depth, not the only gate.

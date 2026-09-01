@@ -10,6 +10,15 @@ export async function listDentists() {
   return res.json();
 }
 
+// Clinic name/phone/address/logo for the invoice PDF header — same public,
+// unauthenticated endpoint the patient-frontend booking pages read (see
+// dentist-service's routes/clinicProfile.js).
+export async function getClinicProfile() {
+  const res = await fetch(`${config.dentistServiceUrl}/clinic-profile`);
+  if (!res.ok) throw new Error(`dentist-service responded ${res.status}`);
+  return res.json();
+}
+
 async function fetchWithRetry(url, attempt = 0) {
   const controller = new AbortController();
   // 3s was too short for a cold Render free-tier instance (20-50s to

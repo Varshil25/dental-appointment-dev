@@ -39,3 +39,34 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_appt_dentist_time ON appointments(dentist_id, start_time);
   CREATE INDEX IF NOT EXISTS idx_appt_patient ON appointments(patient_id);
 `);
+
+// Invoices live in this same database (unlike patients/dentists) because
+// they're 1:1 with an appointment row here — a real FK is possible and
+// cheaper than another HTTP round-trip. UNIQUE(appointment_id) enforces
+// that 1:1-ness at the DB level: at most one invoice per appointment.
+// patient_id/dentist_id are denormalized copies (read off the appointment
+// at creation time) so invoice queries/filters don't need a join back to
+// appointments, matching how appointments itself denormalizes away from
+// patient-service/dentist-service.
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS invoices (
+    id              SERIAL PRIMARY KEY,
+    appointment_id  INTEGER NOT NULL UNIQUE REFERENCES appointments(id),
+    patient_id      INTEGER NOT NULL,
+    dentist_id      INTEGER NOT NULL,
+    line_items      JSONB NOT NULL,
+    subtotal        NUMERIC(10,2) NOT NULL,
+    tax             NUMERIC(10,2) NOT NULL DEFAULT 0,
+    total           NUMERIC(10,2) NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'unpaid', -- unpaid|paid|cancelled
+    payment_method  TEXT,
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    paid_at         TIMESTAMPTZ
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+  CREATE INDEX IF NOT EXISTS idx_invoices_patient ON invoices(patient_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_dentist ON invoices(dentist_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_created ON invoices(created_at);
+`);

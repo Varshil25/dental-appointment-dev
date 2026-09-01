@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { api, fmtDateTime } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { initials } from '@/lib/initials';
@@ -24,12 +25,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { MoreHorizontal, CalendarClock, CheckCircle2, UserX, XCircle, PlusCircle, Search, TriangleAlert } from 'lucide-react';
+import { MoreHorizontal, CalendarClock, CheckCircle2, UserX, XCircle, PlusCircle, Search, TriangleAlert, Receipt } from 'lucide-react';
 
 const FILTERS = ['all', 'booked', 'completed', 'cancelled', 'no_show'];
 
 export default function AppointmentsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   // Doctors only ever see their own appointments — the gateway enforces
   // this server-side regardless of what's requested (see
   // scopeAppointmentsList in services/gateway/src/auth.js), but passing it
@@ -184,9 +186,22 @@ export default function AppointmentsPage() {
                             </>
                           )}
                           {a.status === 'completed' && (
-                            <DropdownMenuItem onClick={() => setModal({ appt: a, mode: 'follow-up' })}>
-                              <PlusCircle /> Book follow-up
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem onClick={() => setModal({ appt: a, mode: 'follow-up' })}>
+                                <PlusCircle /> Book follow-up
+                              </DropdownMenuItem>
+                              {user?.role === 'admin' && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    router.push(
+                                      a.invoice_id ? `/billing/detail?id=${a.invoice_id}` : `/billing/new?appointmentId=${a.id}`
+                                    )
+                                  }
+                                >
+                                  <Receipt /> {a.invoice_id ? 'View invoice' : 'Add invoice'}
+                                </DropdownMenuItem>
+                              )}
+                            </>
                           )}
                           {a.status !== 'booked' && a.status !== 'completed' && (
                             <DropdownMenuItem disabled>No actions available</DropdownMenuItem>

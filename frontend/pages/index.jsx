@@ -200,6 +200,7 @@ export default function DashboardPage() {
         <StatTile label="Total appointments" value={summary.total} sub="all time" />
         <StatTile label="Total completed" value={summary.counts.completed || 0} sub="kept appointments" />
         <StatTile label="Total cancelled" value={summary.counts.cancelled || 0} sub="cancelled by patient" />
+        <StatTile label="Total revenue" value={`$${summary.totalRevenue.toFixed(2)}`} sub={`${summary.paidInvoiceCount} paid invoices`} />
         <StatTile label="Total no-shows" value={summary.counts.no_show || 0} sub="missed appointments" />
         <StatTile label="Monthly appointments" value={summary.thisMonth} sub="this calendar month" />
         <StatTile label="Daily appointments" value={summary.today} sub="scheduled today" />

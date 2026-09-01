@@ -187,6 +187,26 @@ router.get('/appointments/timeseries', async (req, res) => {
   res.json(result);
 });
 
+// Total revenue (sum of paid invoices) for report-service's dashboard. Sums
+// `total`, not subtotal, so tax is included — same "what actually got
+// collected" framing as the invoice PDF's own total line.
+router.get('/invoices/revenue-summary', async (req, res) => {
+  const { from, to } = req.query;
+  const result = await cached(`internal:invoice-revenue:${from || ''}:${to || ''}`, 15, async () => {
+    const cond = [`status = 'paid'`];
+    const params = [];
+    let i = 1;
+    if (from) { cond.push(`paid_at >= $${i++}`); params.push(from); }
+    if (to) { cond.push(`paid_at <= $${i++}`); params.push(to); }
+    const { rows } = await pool.query(
+      `SELECT COALESCE(SUM(total), 0) AS revenue, COUNT(*) AS n FROM invoices WHERE ${cond.join(' AND ')}`,
+      params
+    );
+    return { totalRevenue: Number(rows[0].revenue), paidInvoiceCount: Number(rows[0].n) };
+  });
+  res.json(result);
+});
+
 // Seed-only: insert an appointment with an explicit status/time (e.g. a
 // past 'completed' visit for reporting demo data), bypassing the
 // past-time guard the public booking route enforces. Guarded by a shared

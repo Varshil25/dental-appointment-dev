@@ -61,7 +61,13 @@ const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
 // profile lives at '/dentists/detail?id=<their own dentist_id>', which is
 // checked separately below since it needs the query param, not just the
 // path.
-const ADMIN_ONLY_PATHS = ['/clinic-settings', '/inquiries', '/patients', '/reminders', '/dentists', '/dentist-applications'];
+// '/billing/*' has no doctor-permitted subpage (unlike '/dentists/detail',
+// which a doctor may view for their own record) so every one of its exact
+// paths is just listed here rather than needing a startsWith/prefix check.
+const ADMIN_ONLY_PATHS = [
+  '/clinic-settings', '/inquiries', '/patients', '/reminders', '/dentists', '/dentist-applications',
+  '/billing', '/billing/new', '/billing/detail',
+];
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

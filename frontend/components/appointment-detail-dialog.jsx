@@ -1,17 +1,21 @@
 'use client';
 
+import { useRouter } from 'next/router';
 import { fmtDateTime } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { StatusBadge } from '@/components/status-badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { CalendarClock, CheckCircle2, UserX, XCircle, PlusCircle, TriangleAlert } from 'lucide-react';
+import { CalendarClock, CheckCircle2, UserX, XCircle, PlusCircle, TriangleAlert, Receipt } from 'lucide-react';
 
 // Detail/edit surface opened from a calendar event click. Reuses the same
 // action handlers (and the same <RescheduleDialog/>, via `actions.reschedule`
 // / `actions.followUp`) that the list view's row dropdown uses, so booking
 // logic isn't duplicated between the two views.
 export function AppointmentDetailDialog({ appt, open, onOpenChange, actions }) {
+  const router = useRouter();
+  const { user } = useAuth();
   if (!appt) return null;
   const busy = actions.pending?.id === appt.id;
 
@@ -64,9 +68,22 @@ export function AppointmentDetailDialog({ appt, open, onOpenChange, actions }) {
             </>
           )}
           {appt.status === 'completed' && (
-            <Button variant="outline" size="sm" onClick={() => { actions.followUp(appt); onOpenChange(false); }}>
-              <PlusCircle /> Book follow-up
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={() => { actions.followUp(appt); onOpenChange(false); }}>
+                <PlusCircle /> Book follow-up
+              </Button>
+              {user?.role === 'admin' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    router.push(appt.invoice_id ? `/billing/detail?id=${appt.invoice_id}` : `/billing/new?appointmentId=${appt.id}`)
+                  }
+                >
+                  <Receipt /> {appt.invoice_id ? 'View invoice' : 'Add invoice'}
+                </Button>
+              )}
+            </>
           )}
           {appt.status !== 'booked' && appt.status !== 'completed' && (
             <p className="text-sm text-muted-foreground">No actions available</p>
