@@ -134,7 +134,29 @@ await pool.query(`
     phone         TEXT,
     subject       TEXT NOT NULL,
     message       TEXT NOT NULL,
-    status        TEXT NOT NULL DEFAULT 'new', -- new|read
+    status        TEXT NOT NULL DEFAULT 'new', -- new|read|replied
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 `);
+
+// An inquiry can get more than one reply over time (a back-and-forth), so
+// replies are their own append-only table rather than a single
+// reply_text/replied_at pair on inquiries — that pair would only ever hold
+// the latest reply and silently lose the rest of the thread. sent_by/
+// sent_by_name are a denormalized copy of the admin who sent it (id from
+// the gateway-forwarded X-User-Id header — see routes/inquiries.js — plus
+// the display name from the JWT at send time) rather than a cross-service
+// FK, same "plain INTEGER, no REFERENCES" convention appointment-service
+// uses for patient_id/dentist_id, since auth-service's users table lives in
+// a different database entirely.
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS inquiry_replies (
+    id            SERIAL PRIMARY KEY,
+    inquiry_id    INTEGER NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+    message       TEXT NOT NULL,
+    sent_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_by       INTEGER,
+    sent_by_name  TEXT
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_inquiry_replies_inquiry ON inquiry_replies(inquiry_id);`);

@@ -103,8 +103,11 @@ export const api = {
   // Inquiries — submitted from the patient-frontend site's Contact page,
   // read here so staff aren't relying solely on the notification email.
   listInquiries: (status) => request(`/inquiries${status ? `?status=${status}` : ''}`),
+  getInquiry: (id) => request(`/inquiries/${id}`),
   setInquiryStatus: (id, status) =>
     request(`/inquiries/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  replyToInquiry: (id, message) =>
+    request(`/inquiries/${id}/reply`, { method: 'POST', body: JSON.stringify({ message }) }),
 
   // Dentist applications — admin review of self-submitted applications from
   // patient-frontend's /join-as-dentist form. Submission itself (POST '/')

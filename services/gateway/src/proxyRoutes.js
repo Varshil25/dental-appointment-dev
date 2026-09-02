@@ -61,6 +61,19 @@ export function mountProxies(app) {
         // use a rewrite function instead, which runs unconditionally.
         pathRewrite: typeof rewriteTo === 'function' ? rewriteTo : { [`^${prefix}`]: rewriteTo },
         on: {
+          // Forwards the caller's identity (set by requireAuth above, for the
+          // routes that run it) to the downstream service as trusted internal
+          // headers — the one place a backend service can learn *who* made an
+          // already-authorized request without re-verifying the JWT itself.
+          // Only meaningful for routes gated by requireAuth; unauthenticated
+          // routes simply proxy through with no X-User-* headers, same as
+          // before this existed.
+          proxyReq: (proxyReq, req) => {
+            if (!req.user) return;
+            proxyReq.setHeader('X-User-Id', String(req.user.sub));
+            proxyReq.setHeader('X-User-Role', req.user.role);
+            if (req.user.name) proxyReq.setHeader('X-User-Name', req.user.name);
+          },
           error: (err, _req, res) => {
             console.error(`[gateway] proxy error for ${prefix} -> ${target}:`, err.message);
             res.writeHead(502, { 'Content-Type': 'application/json' });

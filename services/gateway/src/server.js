@@ -125,7 +125,13 @@ app.put('/api/clinic-profile', requireAuth, requireRole('admin'));
 // Inquiries — POST (the public contact form) stays public; reading/
 // triaging submitted inquiries is staff-only.
 app.get('/api/inquiries', requireAuth, requireRole('admin'));
+// Single-inquiry read gains the same gate here — the admin Inquiries detail
+// view now fetches this to show the reply thread, which carries the admin's
+// own reply text alongside patient PII, so this can no longer stay public
+// the way it (accidentally) was before replies existed.
+app.get('/api/inquiries/:id', requireAuth, requireRole('admin'));
 app.patch('/api/inquiries/:id/status', requireAuth, requireRole('admin'));
+app.post('/api/inquiries/:id/reply', requireAuth, requireRole('admin'));
 
 // Reminders and reports are staff-only in full; unlike appointments,
 // reminder rows don't carry a dentist_id to scope by (see reminder-
