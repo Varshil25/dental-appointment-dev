@@ -12,7 +12,7 @@ const STATUS_LABELS = { unpaid: 'Unpaid', paid: 'Paid', cancelled: 'Cancelled' }
 const fmtDate = (iso) =>
   new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
-const fmtMoney = (n) => `$${Number(n).toFixed(2)}`;
+const fmtMoney = (n) => (Number.isFinite(Number(n)) ? `$${Number(n).toFixed(2)}` : '—');
 
 // Minimal manual table layout — pdfkit has no built-in table support, same
 // approach as report-service/src/pdf.js's drawTable.
@@ -30,7 +30,7 @@ function drawLineItems(doc, x, y, items) {
   cursorY += 8;
 
   doc.font('Helvetica').fontSize(10).fillColor(INK);
-  for (const item of items) {
+  for (const item of items || []) {
     const before = cursorY;
     doc.text(item.description, x, cursorY, { width: descWidth });
     const descHeight = doc.heightOfString(item.description, { width: descWidth });

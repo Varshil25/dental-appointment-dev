@@ -12,7 +12,16 @@ import { cn } from '@/lib/utils';
 
 const FILTERS = ['all', 'unpaid', 'paid', 'cancelled'];
 
-const fmtMoney = (n) => `$${Number(n).toFixed(2)}`;
+const fmtMoney = (n) => (Number.isFinite(Number(n)) ? `$${Number(n).toFixed(2)}` : null);
+
+// Legacy/corrupt rows (no line items yet, or a bad stored total) should
+// never render "$NaN" — fall back to a clear draft/placeholder label instead.
+function InvoiceTotalCell({ invoice }) {
+  const money = fmtMoney(invoice.total);
+  if (money) return money;
+  if (!invoice.line_items || invoice.line_items.length === 0) return 'Draft — no items yet';
+  return '—';
+}
 
 export default function BillingPage() {
   const [filter, setFilter] = useState('all');
@@ -91,7 +100,7 @@ export default function BillingPage() {
                   <TableCell>{inv.patient_name || `Patient #${inv.patient_id}`}</TableCell>
                   <TableCell>{inv.dentist_name || `Dentist #${inv.dentist_id}`}</TableCell>
                   <TableCell>{fmtDateTime(inv.created_at)}</TableCell>
-                  <TableCell className="text-right font-medium">{fmtMoney(inv.total)}</TableCell>
+                  <TableCell className="text-right font-medium"><InvoiceTotalCell invoice={inv} /></TableCell>
                   <TableCell><InvoiceStatusBadge status={inv.status} /></TableCell>
                   <TableCell className="text-right">
                     <Link href={`/billing/detail?id=${inv.id}`} className="text-primary text-sm hover:underline">

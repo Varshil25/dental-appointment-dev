@@ -80,6 +80,31 @@ router.post('/', async (req, res) => {
   res.status(201).json(await getInvoice(rows[0].id));
 });
 
+// Admin adds/replaces line items on an invoice that doesn't have real ones
+// yet (or wants to correct them) — the counterpart to POST '/' for invoices
+// that end up in a bad "no items" state. Only allowed while unpaid: once
+// money has changed hands the line items are history, not a draft.
+router.patch('/:id/line-items', async (req, res) => {
+  const existing = await getInvoiceLocal(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'invoice not found' });
+  if (existing.status !== 'unpaid')
+    return res.status(400).json({ error: `cannot edit line items on a ${existing.status} invoice` });
+
+  const { line_items, tax } = req.body;
+  const itemsError = validateLineItems(line_items);
+  if (itemsError) return res.status(400).json({ error: itemsError });
+
+  const items = line_items.map((li) => ({ description: li.description.trim(), amount: +Number(li.amount).toFixed(2) }));
+  const { subtotal, tax: taxAmount, total } = computeTotals(items, tax ?? existing.tax);
+
+  await pool.query(
+    `UPDATE invoices SET line_items = $1, subtotal = $2, tax = $3, total = $4 WHERE id = $5`,
+    [JSON.stringify(items), subtotal, taxAmount, total, existing.id]
+  );
+  await invalidateAll();
+  res.json(await getInvoice(existing.id));
+});
+
 // Admin records a payment taken outside this system (cash/card/insurance
 // at the desk) — this never charges anything itself, see invoicePdf.js's
 // footer and the frontend's dialog copy for the same "not a payment

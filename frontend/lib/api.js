@@ -127,6 +127,8 @@ export const api = {
   },
   getInvoice: (id) => request(`/invoices/${id}`),
   createInvoice: (body) => request('/invoices', { method: 'POST', body: JSON.stringify(body) }),
+  updateInvoiceLineItems: (id, body) =>
+    request(`/invoices/${id}/line-items`, { method: 'PATCH', body: JSON.stringify(body) }),
   markInvoicePaid: (id, payment_method) =>
     request(`/invoices/${id}/mark-paid`, { method: 'PATCH', body: JSON.stringify({ payment_method }) }),
   // Binary response (application/pdf), not JSON — bypasses request()'s
