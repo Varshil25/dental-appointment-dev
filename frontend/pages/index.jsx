@@ -11,7 +11,20 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { TableSkeletonRows } from '@/components/table-skeleton';
-import { FileDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  FileDown,
+  CalendarRange,
+  CalendarClock,
+  DollarSign,
+  ClipboardList,
+  CheckCircle2,
+  XCircle,
+  UserX,
+  Users,
+  CalendarDays,
+  BellRing,
+} from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
@@ -27,6 +40,43 @@ function fmtShortDate(dateStr) {
   return `${Number(m)}/${Number(d)}`;
 }
 
+// One compact entry in the "Appointment activity" card — icon, count, and
+// label share a single accent color (the same --status-* tokens the status
+// Badges use elsewhere) so completed/cancelled/no-show read as a set rather
+// than three identical boxes.
+function ActivityStat({ icon: Icon, label, value, accent }) {
+  return (
+    <div className="flex flex-1 items-center gap-3">
+      <div className="shrink-0 rounded-full bg-muted p-2">
+        <Icon className={cn('size-4', accent)} />
+      </div>
+      <div>
+        <div className={cn('text-xl font-bold', accent)}>{value}</div>
+        <div className="text-xs text-muted-foreground">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+// A single labeled progress bar used to compare no-show rate vs.
+// cancellation rate side by side instead of as two isolated number cards.
+function RateBar({ label, value, barClass, textClass }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className={cn('text-lg font-bold', textClass)}>{value}%</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={cn('h-2.5 rounded-full', barClass)}
+          style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
@@ -35,11 +85,32 @@ function DashboardSkeleton() {
         <Skeleton className="h-4 w-96 max-w-full mt-2" />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {Array.from({ length: 8 }).map((_, i) => (
+        {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i}>
-            <CardContent className="py-4 space-y-2">
-              <Skeleton className="h-7 w-14" />
+            <CardContent className="py-6 space-y-2">
+              <Skeleton className="h-9 w-16" />
               <Skeleton className="h-3 w-20" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i}>
+            <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="py-3 space-y-1.5">
+              <Skeleton className="h-5 w-12" />
+              <Skeleton className="h-3 w-16" />
             </CardContent>
           </Card>
         ))}
@@ -195,22 +266,88 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {/* Hero row — the numbers an admin checks first, given more visual weight. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatTile label="Total patients" value={summary.patients} sub="on file" />
-        <StatTile label="Total appointments" value={summary.total} sub="all time" />
-        <StatTile label="Total completed" value={summary.counts.completed || 0} sub="kept appointments" />
-        <StatTile label="Total cancelled" value={summary.counts.cancelled || 0} sub="cancelled by patient" />
-        <StatTile label="Total revenue" value={`$${summary.totalRevenue.toFixed(2)}`} sub={`${summary.paidInvoiceCount} paid invoices`} />
-        <StatTile label="Total no-shows" value={summary.counts.no_show || 0} sub="missed appointments" />
-        <StatTile label="Monthly appointments" value={summary.thisMonth} sub="this calendar month" />
-        <StatTile label="Daily appointments" value={summary.today} sub="scheduled today" />
-        <StatTile label="Upcoming" value={summary.upcoming} sub="booked & in the future" />
+        <StatTile size="lg" icon={CalendarRange} label="Upcoming" value={summary.upcoming} sub="booked & in the future" />
+        <StatTile size="lg" icon={CalendarClock} label="Today" value={summary.today} sub="scheduled today" />
+        <StatTile
+          size="lg"
+          icon={DollarSign}
+          accent="text-status-completed-fg"
+          label="Total revenue"
+          value={`$${summary.totalRevenue.toFixed(2)}`}
+          sub={`${summary.paidInvoiceCount} paid invoices`}
+        />
+        <StatTile size="lg" icon={ClipboardList} label="Total appointments" value={summary.total} sub="all time" />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatTile label="No-show rate" value={`${summary.noShowRate}%`} sub="of finished appts" />
-        <StatTile label="Cancellation rate" value={`${summary.cancellationRate}%`} sub="of finished appts" />
-        <StatTile label="Reminders sent" value={summary.remindersSent} sub="emails delivered" />
+      {/* Appointment activity + outcome rates — the completed/cancelled/no-show
+          counts and their rates describe the same underlying data from
+          different angles, so they're grouped side by side instead of five
+          more equal-sized tiles. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Appointment activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-2 sm:divide-x divide-border">
+              <div className="sm:pr-4">
+                <ActivityStat
+                  icon={CheckCircle2}
+                  label="Completed"
+                  value={summary.counts.completed || 0}
+                  accent="text-status-completed-fg"
+                />
+              </div>
+              <div className="sm:px-4">
+                <ActivityStat
+                  icon={XCircle}
+                  label="Cancelled"
+                  value={summary.counts.cancelled || 0}
+                  accent="text-status-cancelled-fg"
+                />
+              </div>
+              <div className="sm:pl-4">
+                <ActivityStat
+                  icon={UserX}
+                  label="No-shows"
+                  value={summary.counts.no_show || 0}
+                  accent="text-status-noshow-fg"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Outcome rates</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <RateBar
+              label="No-show rate"
+              value={summary.noShowRate}
+              barClass="bg-status-noshow-fg"
+              textClass="text-status-noshow-fg"
+            />
+            <RateBar
+              label="Cancellation rate"
+              value={summary.cancellationRate}
+              barClass="bg-status-cancelled-fg"
+              textClass="text-status-cancelled-fg"
+            />
+            <p className="text-xs text-muted-foreground/70">Share of finished appointments.</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Less-frequently-needed detail metrics — visually quieter than the
+          hero row above. */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatTile size="sm" icon={Users} label="Total patients" value={summary.patients} sub="on file" />
+        <StatTile size="sm" icon={CalendarDays} label="Monthly appointments" value={summary.thisMonth} sub="this calendar month" />
+        <StatTile size="sm" icon={BellRing} label="Reminders sent" value={summary.remindersSent} sub="emails delivered" />
       </div>
 
       <Card>
