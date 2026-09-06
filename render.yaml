@@ -481,6 +481,36 @@ services:
       - type: rewrite
         source: /v1/admin/*
         destination: https://frontend-kj54.onrender.com/*
+      # Every one of this site's own pages, explicit and ahead of the
+      # catch-all below. Found missing while testing the review-request
+      # email link (/review?appointment=<id>): a fresh, direct hit of ANY
+      # of these routes — not just /review, confirmed the same for the
+      # long-established /book too — fell through to the final /*
+      # catch-all and served the home page's markup at the wrong URL,
+      # since Render evaluates rewrite rules before checking whether a
+      # matching static asset already exists (same root cause as the
+      # /v1/admin bare-path bug above, just unnoticed here because normal
+      # traffic only ever reaches these pages via an in-app Link — a
+      # client-side transition that never round-trips through Render's
+      # static host routing at all). Confirmed each target file exists by
+      # hitting it directly (e.g. /book.html, /book/manage.html) before
+      # adding these. No dynamic ([id]-style) routes exist on this site,
+      # so this list is exhaustive — a new page needs a line added here.
+      - type: rewrite
+        source: /book
+        destination: /book.html
+      - type: rewrite
+        source: /book/manage
+        destination: /book/manage.html
+      - type: rewrite
+        source: /contact
+        destination: /contact.html
+      - type: rewrite
+        source: /join-as-dentist
+        destination: /join-as-dentist.html
+      - type: rewrite
+        source: /review
+        destination: /review.html
       - type: rewrite
         source: /*
         destination: /index.html
