@@ -104,7 +104,7 @@ export default function BillingPage() {
                   <TableCell><InvoiceStatusBadge status={inv.status} /></TableCell>
                   <TableCell className="text-right">
                     <Link href={`/billing/detail?id=${inv.id}`} className="text-primary text-sm hover:underline">
-                      View →
+                      {inv.status === 'unpaid' && (!inv.line_items || inv.line_items.length === 0) ? 'Add items →' : 'View →'}
                     </Link>
                   </TableCell>
                 </TableRow>

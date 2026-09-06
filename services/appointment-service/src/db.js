@@ -62,7 +62,8 @@ await pool.query(`
     payment_method  TEXT,
     notes           TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    paid_at         TIMESTAMPTZ
+    paid_at         TIMESTAMPTZ,
+    emailed_at      TIMESTAMPTZ
   );
 
   CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
@@ -70,3 +71,8 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_invoices_dentist ON invoices(dentist_id);
   CREATE INDEX IF NOT EXISTS idx_invoices_created ON invoices(created_at);
 `);
+
+// emailed_at was added after the invoices table already existed in deployed
+// databases (local + Render's Neon) — CREATE TABLE IF NOT EXISTS above is a
+// no-op against those, so the column needs its own idempotent migration.
+await pool.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS emailed_at TIMESTAMPTZ;`);

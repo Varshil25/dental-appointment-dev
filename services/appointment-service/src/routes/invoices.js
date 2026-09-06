@@ -3,7 +3,9 @@ import { pool } from '../db.js';
 import { getAppointmentLocal } from '../queries.js';
 import { getInvoiceLocal, getInvoiceByAppointment, listInvoices, getInvoice } from '../invoiceQueries.js';
 import { getClinicProfile } from '../clients/dentistServiceClient.js';
-import { renderInvoicePdf } from '../invoicePdf.js';
+import { sendMail } from '../clients/notificationServiceClient.js';
+import { renderInvoicePdf, invoicePdfBuffer } from '../invoicePdf.js';
+import { invoiceEmailTemplate } from '../templates.js';
 import { invalidateAll } from '../cache.js';
 
 const router = Router();
@@ -18,6 +20,12 @@ function validateLineItems(items) {
       return 'each line item needs a non-negative numeric amount';
   }
   return null;
+}
+
+// Guards mark-paid and send-email — an invoice with no items (or a $0
+// total, e.g. every item's amount ended up 0) isn't something to bill.
+function hasBillableTotal(invoice) {
+  return Array.isArray(invoice.line_items) && invoice.line_items.length > 0 && Number(invoice.total) > 0;
 }
 
 function computeTotals(items, tax) {
@@ -114,6 +122,8 @@ router.patch('/:id/mark-paid', async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'invoice not found' });
   if (existing.status !== 'unpaid')
     return res.status(400).json({ error: `cannot mark a ${existing.status} invoice as paid` });
+  if (!hasBillableTotal(existing))
+    return res.status(400).json({ error: 'add line items before marking this invoice as paid' });
 
   const paymentMethod = String(req.body.payment_method || '').trim();
   if (!paymentMethod) return res.status(400).json({ error: 'payment_method is required' });
@@ -124,6 +134,41 @@ router.patch('/:id/mark-paid', async (req, res) => {
   );
   await invalidateAll();
   res.json(await getInvoice(existing.id));
+});
+
+// Emails the same PDF the "Download PDF" button produces to the patient on
+// file, and stamps emailed_at so the admin can see it went out without
+// having to check their own sent-mail history. Admin-only is enforced at
+// the gateway (the whole /api/invoices prefix requires role 'admin' — see
+// gateway/src/server.js), not re-checked here.
+router.post('/:id/send-email', async (req, res) => {
+  const invoice = await getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ error: 'invoice not found' });
+  if (!hasBillableTotal(invoice))
+    return res.status(400).json({ error: 'add line items before emailing this invoice' });
+  if (!invoice.patient_email)
+    return res.status(400).json({ error: 'this patient has no email address on file' });
+
+  let clinic = null;
+  try {
+    clinic = await getClinicProfile();
+  } catch (err) {
+    console.error('[appointment-service] could not load clinic profile for invoice email:', err.message);
+  }
+
+  const pdf = await invoicePdfBuffer(invoice, clinic);
+  const { subject, text, html } = invoiceEmailTemplate(invoice);
+  const result = await sendMail(invoice.patient_email, {
+    subject,
+    text,
+    html,
+    attachments: [{ filename: `invoice-${invoice.id}.pdf`, content: pdf.toString('base64'), contentType: 'application/pdf' }],
+  });
+  if (!result.ok) return res.status(502).json({ error: 'failed to send invoice email', detail: result.detail });
+
+  await pool.query(`UPDATE invoices SET emailed_at = now() WHERE id = $1`, [invoice.id]);
+  await invalidateAll();
+  res.json(await getInvoice(invoice.id));
 });
 
 router.get('/:id/pdf', async (req, res) => {

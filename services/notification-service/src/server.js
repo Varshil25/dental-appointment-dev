@@ -5,7 +5,10 @@ import sendRoute from './routes/send.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Default 100kb is too small once a base64-encoded PDF attachment (invoice
+// emails) rides along in the body — 33% larger than the raw file already,
+// and a multi-page invoice can run a few hundred KB raw.
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'notification-service' }));
 

@@ -49,16 +49,11 @@ function totalLine(doc, x, y, label, value, { bold = false } = {}) {
   doc.text(value, x + width - amountWidth, y, { width: amountWidth, align: 'right' });
 }
 
-// Streams a formatted invoice PDF directly to the HTTP response. `clinic`
-// is the composed clinic-profile row (or null if that lookup failed — the
-// header falls back to a generic label rather than failing the download).
-export function renderInvoicePdf(res, invoice, clinic) {
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
-
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.id}.pdf"`);
-  doc.pipe(res);
-
+// Draws the invoice body onto an already-created PDFDocument — shared by
+// both renderInvoicePdf (streamed to an HTTP response, for the "Download
+// PDF" button) and invoicePdfBuffer (collected into a Buffer, for emailing
+// the same document as an attachment) so the layout only lives in one place.
+function drawInvoice(doc, invoice, clinic) {
   // ── Header ──────────────────────────────────────────────
   doc.font('Helvetica-Bold').fontSize(20).fillColor(BRAND).text(clinic?.clinic_name || 'Invoice');
   if (clinic?.address || clinic?.phone) {
@@ -131,6 +126,30 @@ export function renderInvoicePdf(res, invoice, clinic) {
     780,
     { width: 495, align: 'center' }
   );
+}
 
+// Streams a formatted invoice PDF directly to the HTTP response. `clinic`
+// is the composed clinic-profile row (or null if that lookup failed — the
+// header falls back to a generic label rather than failing the download).
+export function renderInvoicePdf(res, invoice, clinic) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.id}.pdf"`);
+  doc.pipe(res);
+  drawInvoice(doc, invoice, clinic);
   doc.end();
+}
+
+// Same rendering, collected into an in-memory Buffer instead of streamed to
+// a response — used to attach the invoice PDF to the "send to patient" email.
+export function invoicePdfBuffer(invoice, clinic) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    drawInvoice(doc, invoice, clinic);
+    doc.end();
+  });
 }

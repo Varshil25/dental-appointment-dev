@@ -14,7 +14,7 @@ const escapeHtml = (s) =>
 // Table-based layout with inline styles throughout — the only markup style
 // that renders consistently across Gmail/Outlook/Apple Mail, none of which
 // can be relied on to support a <style> block or modern CSS layout.
-function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, closing, ctaLabel }) {
+function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, closing, ctaLabel, footerNote }) {
   const { name, phone, address } = config.clinic;
 
   const rowItem = ([label, value, rowIcon]) => `
@@ -116,6 +116,7 @@ function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, cl
     <tr>
       <td style="padding:22px 12px 0;text-align:center;">
         <p style="font-size:11.5px;color:#a1a8b3;margin:0;line-height:1.6;">${escapeHtml(name)} &middot; ${escapeHtml(phone)} &middot; ${escapeHtml(address)}</p>
+        <p style="font-size:10.5px;color:#b7bec8;margin:6px 0 0;line-height:1.6;">${escapeHtml(footerNote || `You're receiving this email because you have an appointment with ${name}.`)}</p>
       </td>
     </tr>
   </table>
@@ -132,7 +133,8 @@ export function bookingTemplate(appt) {
     `  Reason:  ${appt.reason || 'General visit'}\n\n` +
     `We'll send you a reminder before your visit.\n` +
     `To change your booking, call ${config.clinic.phone}.\n\n` +
-    `Thank you,\n${config.clinic.name}`;
+    `Thank you,\n${config.clinic.name}\n\n` +
+    `---\nYou're receiving this email because you have an appointment with ${config.clinic.name}.`;
   const html = renderEmail({
     icon: '&#10003;',
     accent: '#059669',
@@ -158,7 +160,8 @@ export function cancellationTemplate(appt) {
     `Your appointment on ${fmt(appt.start_time)} with ${appt.dentist_name} ` +
     `has been cancelled.\n\n` +
     `Would you like to rebook? Call us at ${config.clinic.phone}.\n\n` +
-    `${config.clinic.name}`;
+    `${config.clinic.name}\n\n` +
+    `---\nYou're receiving this email because you had an appointment with ${config.clinic.name}.`;
   const html = renderEmail({
     icon: '&#10005;',
     accent: '#e11d48',
@@ -172,6 +175,38 @@ export function cancellationTemplate(appt) {
     ],
     closing: 'We hope to see you again soon.',
     ctaLabel: 'Call to Rebook',
+  });
+  return { subject, text, html };
+}
+
+const fmtMoney = (n) => (Number.isFinite(Number(n)) ? `$${Number(n).toFixed(2)}` : '—');
+
+export function invoiceEmailTemplate(invoice) {
+  const subject = `Your invoice from ${config.clinic.name} — ${fmtMoney(invoice.total)}`;
+  const text =
+    `Hi ${invoice.patient_name || 'there'},\n\n` +
+    `Here is your invoice from ${config.clinic.name} for your recent visit with ${invoice.dentist_name || 'us'}.\n\n` +
+    `  Invoice:  #${invoice.id}\n` +
+    `  Total:    ${fmtMoney(invoice.total)}\n\n` +
+    `The full itemized invoice is attached as a PDF.\n\n` +
+    `Questions about this invoice? Call us at ${config.clinic.phone}.\n\n` +
+    `Thank you,\n${config.clinic.name}\n\n` +
+    `---\nYou're receiving this email because you have an invoice with ${config.clinic.name}.`;
+  const html = renderEmail({
+    icon: '&#128179;',
+    accent: '#0f766e',
+    accentSoft: '#f0fdfa',
+    badge: 'Invoice',
+    heading: `Your invoice, ${firstName(invoice.patient_name)}`,
+    intro: `Here's your invoice from ${config.clinic.name}. The full itemized breakdown is attached as a PDF.`,
+    rows: [
+      ['Invoice', `#${invoice.id}`, '&#128196;'],
+      ['Dentist', invoice.dentist_name || 'Our team', '&#129688;'],
+      ['Total', fmtMoney(invoice.total), '&#128179;'],
+    ],
+    closing: 'This email does not process payment — it only shares the invoice for your records.',
+    ctaLabel: 'Call with Questions',
+    footerNote: `You're receiving this email because you have an invoice with ${config.clinic.name}.`,
   });
   return { subject, text, html };
 }
@@ -206,7 +241,8 @@ export function followUpTemplate(appt) {
     `We've scheduled your follow-up visit at ${config.clinic.name}.\n\n` +
     `  When:    ${fmt(appt.start_time)}\n` +
     `  Dentist: ${appt.dentist_name}\n\n` +
-    `See you then,\n${config.clinic.name}`;
+    `See you then,\n${config.clinic.name}\n\n` +
+    `---\nYou're receiving this email because you have an appointment with ${config.clinic.name}.`;
   const html = renderEmail({
     icon: '&#43;',
     accent: '#4f46e5',

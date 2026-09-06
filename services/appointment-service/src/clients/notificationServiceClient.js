@@ -5,14 +5,14 @@ import { config } from '../config.js';
 // No timeout previously meant a cold/slow notification-service could leave
 // the booking request hanging well past what "best-effort" should cost;
 // 30s matches the other inter-service clients in this repo.
-export async function sendMail(to, { subject, text, html }) {
+export async function sendMail(to, { subject, text, html, attachments }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const res = await fetch(`${config.notificationServiceUrl}/internal/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject, text, html }),
+      body: JSON.stringify({ to, subject, text, html, attachments }),
       signal: controller.signal,
     });
     return await res.json().catch(() => ({ ok: res.ok }));

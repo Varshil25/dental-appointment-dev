@@ -134,6 +134,7 @@ export const api = {
     request(`/invoices/${id}/line-items`, { method: 'PATCH', body: JSON.stringify(body) }),
   markInvoicePaid: (id, payment_method) =>
     request(`/invoices/${id}/mark-paid`, { method: 'PATCH', body: JSON.stringify({ payment_method }) }),
+  sendInvoiceEmail: (id) => request(`/invoices/${id}/send-email`, { method: 'POST' }),
   // Binary response (application/pdf), not JSON — bypasses request()'s
   // res.json() parsing and returns the raw Blob for the caller to save.
   // Unlike summaryPdf below, this route is admin-gated, so the auth header

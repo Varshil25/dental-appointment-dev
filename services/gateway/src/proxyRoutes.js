@@ -18,7 +18,18 @@ const routeTable = [
   ['/api/patients', config.services.patient, ''],
   ['/api/dentists', config.services.dentist, ''],
   ['/api/appointments', config.services.appointment, ''],
-  ['/api/invoices', config.services.appointment, ''],
+  // Same "fixed prefix, sub-paths must survive" rewrite need as inquiries/
+  // dentist-applications below — invoices shares appointment-service with
+  // appointments above, but is mounted there at '/invoices' (see that
+  // service's server.js), not '/'. The '' rewrite appointments uses is a
+  // no-op (post-strip path already equals what appointments expects at its
+  // own root mount), but reusing it here silently sent every /api/invoices
+  // request to appointment-service's *appointments* router instead —
+  // identical paths (e.g. POST '/', GET '/:id') on both routers meant it
+  // never 404'd, just returned appointment rows/errors where invoice data
+  // was expected. Confirmed via GET /api/invoices returning appointment
+  // rows and GET /api/invoices/2 returning "appointment not found".
+  ['/api/invoices', config.services.appointment, (path) => `/invoices${path}`],
   ['/api/reminders', config.services.reminder, ''],
   ['/api/reports', config.services.report, ''],
   ['/api/clinic-profile', config.services.dentist, () => '/clinic-profile'],

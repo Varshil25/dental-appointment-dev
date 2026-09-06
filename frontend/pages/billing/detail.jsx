@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, FileDown, CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, FileDown, CheckCircle2, Plus, Trash2, Pencil, Mail } from 'lucide-react';
 
 // A stored total/subtotal can be missing or corrupt on legacy/bad rows —
 // never let that render as literal "$NaN".
@@ -35,8 +35,20 @@ export default function InvoiceDetailPage() {
   const [editingItems, setEditingItems] = useState(false);
   const [lines, setLines] = useState([emptyLine()]);
   const [savingItems, setSavingItems] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
-  const load = () => api.getInvoice(id).then(setInvoice).catch(() => setNotFound(true));
+  const load = () =>
+    api.getInvoice(id).then((inv) => {
+      setInvoice(inv);
+      // A draft invoice with no items is a dead end otherwise — land the
+      // admin straight into the add-items form instead of an empty-state
+      // message with an extra click to get anywhere useful.
+      const noItems = !Array.isArray(inv.line_items) || inv.line_items.length === 0;
+      if (noItems && inv.status === 'unpaid') {
+        setLines([emptyLine()]);
+        setEditingItems(true);
+      }
+    }).catch(() => setNotFound(true));
   useEffect(() => { if (id) load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateLine(i, field, value) {
@@ -44,6 +56,14 @@ export default function InvoiceDetailPage() {
   }
   function addLine() { setLines((prev) => [...prev, emptyLine()]); }
   function removeLine(i) { setLines((prev) => prev.filter((_, idx) => idx !== i)); }
+
+  function openEdit() {
+    const existingLines = Array.isArray(invoice.line_items) && invoice.line_items.length
+      ? invoice.line_items.map((li) => ({ description: li.description, amount: String(li.amount) }))
+      : [emptyLine()];
+    setLines(existingLines);
+    setEditingItems(true);
+  }
 
   async function saveLineItems() {
     const cleaned = lines
@@ -78,6 +98,19 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  async function sendEmail() {
+    setSendingEmail(true);
+    try {
+      const updated = await api.sendInvoiceEmail(id);
+      setInvoice(updated);
+      notify(`Sent to ${updated.patient_email}`);
+    } catch (e) {
+      notify(e.message, 'err');
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
   async function downloadPdf() {
     setDownloading(true);
     try {
@@ -109,6 +142,7 @@ export default function InvoiceDetailPage() {
   }
 
   const hasItems = Array.isArray(invoice.line_items) && invoice.line_items.length > 0;
+  const hasBillableTotal = hasItems && Number(invoice.total) > 0;
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -139,6 +173,12 @@ export default function InvoiceDetailPage() {
                 <dd>{fmtDateTime(invoice.paid_at)} · {invoice.payment_method}</dd>
               </>
             )}
+            {invoice.emailed_at && (
+              <>
+                <dt className="text-muted-foreground">Emailed</dt>
+                <dd>Sent to patient on {fmtDateTime(invoice.emailed_at)}</dd>
+              </>
+            )}
             {invoice.notes && (
               <>
                 <dt className="text-muted-foreground">Notes</dt>
@@ -147,8 +187,16 @@ export default function InvoiceDetailPage() {
             )}
           </dl>
 
-          {hasItems && (
+          {hasItems && !editingItems && (
             <>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-muted-foreground">Line items</span>
+                {invoice.status === 'unpaid' && (
+                  <Button type="button" variant="ghost" size="sm" onClick={openEdit}>
+                    <Pencil className="size-3.5" /> Edit
+                  </Button>
+                )}
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -171,6 +219,12 @@ export default function InvoiceDetailPage() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span>{fmtMoney(invoice.tax)}</span></div>
                 <div className="flex justify-between font-bold text-base pt-1 border-t"><span>Total</span><span>{fmtMoney(invoice.total)}</span></div>
               </div>
+
+              {invoice.status === 'unpaid' && !hasBillableTotal && (
+                <p className="mt-3 text-sm text-amber-600">
+                  Every line item is $0 — add an amount greater than $0 before marking this invoice paid or emailing it.
+                </p>
+              )}
             </>
           )}
 
@@ -227,13 +281,30 @@ export default function InvoiceDetailPage() {
         </CardContent>
       </Card>
 
+      {invoice.status === 'unpaid' && !hasItems && !editingItems && (
+        <p className="text-sm text-muted-foreground text-right">
+          Add line items before marking this invoice paid or emailing it to the patient.
+        </p>
+      )}
+
       <div className="flex justify-end gap-2 flex-wrap">
         <Button variant="outline" disabled={downloading} onClick={downloadPdf}>
           {downloading ? <Spinner /> : <FileDown className="size-4" />}
           {downloading ? 'Generating…' : 'Download PDF'}
         </Button>
-        {invoice.status === 'unpaid' && hasItems && (
-          <Button onClick={() => setMarkPaidOpen(true)}>
+        {invoice.status !== 'cancelled' && (
+          <Button
+            variant="outline"
+            disabled={sendingEmail || !hasBillableTotal}
+            title={!hasBillableTotal ? 'Add line items with a total greater than $0 first' : undefined}
+            onClick={sendEmail}
+          >
+            {sendingEmail ? <Spinner /> : <Mail className="size-4" />}
+            {sendingEmail ? 'Sending…' : 'Send to Patient'}
+          </Button>
+        )}
+        {invoice.status === 'unpaid' && (
+          <Button disabled={!hasBillableTotal} title={!hasBillableTotal ? 'Add line items with a total greater than $0 first' : undefined} onClick={() => setMarkPaidOpen(true)}>
             <CheckCircle2 className="size-4" /> Mark as Paid
           </Button>
         )}

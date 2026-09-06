@@ -6,10 +6,10 @@ const router = Router();
 
 // Internal-only: render/queueing is the caller's job, this just delivers.
 router.post('/send', async (req, res) => {
-  const { to, subject, text, html } = req.body;
+  const { to, subject, text, html, attachments } = req.body;
   if (!to || !subject || (!text && !html))
     return res.status(400).json({ error: 'to, subject and text/html are required' });
-  const result = await sendMail(to, { subject, text, html });
+  const result = await sendMail(to, { subject, text, html, attachments });
   res.status(result.ok ? 200 : 502).json(result);
 });
 

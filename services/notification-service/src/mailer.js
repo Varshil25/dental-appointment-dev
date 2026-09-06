@@ -15,7 +15,7 @@ function parseMailFrom(mailFrom) {
 // SendGrid's free tier lets one verified sender email — verified once via
 // Settings > Sender Authentication > Single Sender Verification, no domain
 // needed — send to any recipient, unlike Resend's sandbox mode below.
-async function sendViaSendGrid(to, { subject, text, html }) {
+async function sendViaSendGrid(to, { subject, text, html, attachments }) {
   const from = parseMailFrom(config.mailFrom);
   const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -31,6 +31,12 @@ async function sendViaSendGrid(to, { subject, text, html }) {
         ...(text ? [{ type: 'text/plain', value: text }] : []),
         ...(html ? [{ type: 'text/html', value: html }] : []),
       ],
+      // `content` is already base64 (callers build it that way so the same
+      // string works unmodified across all three providers below) — this
+      // is exactly the shape SendGrid's attachments API wants.
+      ...(attachments?.length
+        ? { attachments: attachments.map((a) => ({ content: a.content, filename: a.filename, type: a.contentType, disposition: 'attachment' })) }
+        : {}),
     }),
   });
   // SendGrid returns 202 with an empty body on success — no message id in
@@ -55,14 +61,23 @@ async function sendViaSendGrid(to, { subject, text, html }) {
 // silently swallowed by this fallback.
 const SANDBOX_RESTRICTION_RE = /own email address/i;
 
-async function sendViaResend(to, { subject, text, html }) {
+async function sendViaResend(to, { subject, text, html, attachments }) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.resendApiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: config.mailFrom, to, subject, text, html }),
+    body: JSON.stringify({
+      from: config.mailFrom,
+      to,
+      subject,
+      text,
+      html,
+      // Resend accepts attachment `content` as a base64 string directly —
+      // same base64 payload callers already built for SendGrid above.
+      ...(attachments?.length ? { attachments: attachments.map((a) => ({ filename: a.filename, content: a.content })) } : {}),
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -126,21 +141,21 @@ async function getTransporter() {
 // Send an email. Returns { ok, detail } where detail is a SendGrid/Resend
 // message id, an Ethereal preview URL (test mode), an SMTP message id
 // (real mode), or an error string.
-export async function sendMail(to, { subject, text, html }) {
+export async function sendMail(to, { subject, text, html, attachments }) {
   // Tried first, on its own from the rest of the chain below: a failure
   // here (SendGrid down, sender not verified yet, quota hit) shouldn't be
   // fatal when Resend or SMTP might still get the message through — see
   // config.js for why SendGrid is preferred when available.
   if (config.sendgridApiKey) {
     try {
-      return await sendViaSendGrid(to, { subject, text, html });
+      return await sendViaSendGrid(to, { subject, text, html, attachments });
     } catch (err) {
       console.error('[mailer] SendGrid send failed, falling back:', err.message);
     }
   }
 
   try {
-    if (config.resendApiKey) return await sendViaResend(to, { subject, text, html });
+    if (config.resendApiKey) return await sendViaResend(to, { subject, text, html, attachments });
 
     const { transport, isTest } = await getTransporter();
     const info = await transport.sendMail({
@@ -149,6 +164,10 @@ export async function sendMail(to, { subject, text, html }) {
       subject,
       text,
       html,
+      // nodemailer accepts attachment `content` as a base64 string given
+      // `encoding: 'base64'` — no need to decode the same payload used
+      // for SendGrid/Resend above back into a Buffer first.
+      attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content, encoding: 'base64', contentType: a.contentType })),
     });
     const preview = isTest ? nodemailer.getTestMessageUrl(info) : null;
     if (preview) console.log(`[mailer] Preview: ${preview}`);
