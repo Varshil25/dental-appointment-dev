@@ -9,8 +9,11 @@ export async function sendMail(to, { subject, text, html }) {
   // one-off network blip between it and this service, both free-tier and
   // both prone to spinning down from idle) could leave a login request
   // hanging indefinitely instead of failing — or succeeding — within a
-  // bounded time. 30s matches the other inter-service clients in this repo.
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  // bounded time. Render's own free-tier cold start can take up to ~50s
+  // (see render.yaml's comments) — 30s was cutting it close enough to
+  // actually 502 a login attempt that raced a cold notification-service;
+  // 45s leaves margin under gateway's own 55s proxyTimeout for this route.
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
     const res = await fetch(`${config.notificationServiceUrl}/internal/send`, {
       method: 'POST',
