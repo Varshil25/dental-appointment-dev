@@ -4,11 +4,14 @@ import { config } from '../config.js';
 // inquiry submission itself; the inquiry is already saved and visible in
 // the admin dashboard either way. Same posture as appointment-service's
 // client of the same name. No timeout previously meant a cold/slow
-// notification-service could leave the request hanging indefinitely; 30s
-// matches the other inter-service clients in this repo.
+// notification-service could leave the request hanging indefinitely. 30s
+// was too tight against Render free-tier's own observed cold-start time
+// (measured at 32s directly against notification-service's /health) — 45s
+// matches the same fix already applied to auth-service's and
+// appointment-service's clients of the same name.
 export async function sendMail(to, { subject, text, html }) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
     const res = await fetch(`${config.notificationServiceUrl}/internal/send`, {
       method: 'POST',

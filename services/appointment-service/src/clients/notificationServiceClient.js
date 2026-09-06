@@ -3,11 +3,16 @@ import { config } from '../config.js';
 // Best-effort — a failed confirmation/cancellation email shouldn't fail
 // the booking/cancellation itself, same posture as the original monolith.
 // No timeout previously meant a cold/slow notification-service could leave
-// the booking request hanging well past what "best-effort" should cost;
-// 30s matches the other inter-service clients in this repo.
+// the booking request hanging well past what "best-effort" should cost.
+// 30s was too tight against Render free-tier's own observed cold-start
+// time (measured at 32s directly against notification-service's /health)
+// — a review-request/booking email sent right as it was waking up could
+// silently never go out. 45s matches the same fix already applied to
+// auth-service's client of the same name, still comfortably under
+// gateway's 55s proxyTimeout for these routes.
 export async function sendMail(to, { subject, text, html, attachments }) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
     const res = await fetch(`${config.notificationServiceUrl}/internal/send`, {
       method: 'POST',
@@ -27,7 +32,7 @@ export async function sendMail(to, { subject, text, html, attachments }) {
 // Same best-effort posture and timeout reasoning as sendMail above.
 export async function sendSms(to, body) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
     const res = await fetch(`${config.notificationServiceUrl}/internal/send-sms`, {
       method: 'POST',
