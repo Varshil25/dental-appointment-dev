@@ -408,6 +408,69 @@ services:
       - type: rewrite
         source: /v1/admin/*
         destination: /index.html
+      # Every admin page, explicit and ahead of the catch-all below —
+      # requests reach this service at these BARE paths (no /v1/admin
+      # prefix) via patient-frontend's own /v1/admin/* rewrite above,
+      # which already strips the prefix before redirecting here. Without
+      # these, a fresh/direct hit of any admin page (hard refresh,
+      # bookmark, a shared link) fell through to this file's own /*
+      # catch-all and rendered the DASHBOARD route's markup at every
+      # admin URL — found by directly loading /v1/admin/billing and
+      # /v1/admin/reviews in a browser and seeing dashboard stat cards at
+      # both, not those pages' own content. Unnoticed until now because
+      # normal use only ever reaches these pages via the sidebar's
+      # in-app Links, a client-side transition that never round-trips
+      # through Render's static routing at all. Confirmed every target
+      # .html file exists (200) before adding these; this list is meant
+      # to stay exhaustive — a new admin page needs a line added here.
+      - type: rewrite
+        source: /book
+        destination: /book.html
+      - type: rewrite
+        source: /appointments
+        destination: /appointments.html
+      - type: rewrite
+        source: /dentists
+        destination: /dentists.html
+      - type: rewrite
+        source: /dentists/detail
+        destination: /dentists/detail.html
+      - type: rewrite
+        source: /dentist-applications
+        destination: /dentist-applications.html
+      - type: rewrite
+        source: /patients
+        destination: /patients.html
+      - type: rewrite
+        source: /billing
+        destination: /billing.html
+      - type: rewrite
+        source: /billing/detail
+        destination: /billing/detail.html
+      - type: rewrite
+        source: /billing/new
+        destination: /billing/new.html
+      - type: rewrite
+        source: /reviews
+        destination: /reviews.html
+      - type: rewrite
+        source: /reminders
+        destination: /reminders.html
+      - type: rewrite
+        source: /inquiries
+        destination: /inquiries.html
+      - type: rewrite
+        source: /clinic-settings
+        destination: /clinic-settings.html
+      - type: rewrite
+        source: /login
+        destination: /login.html
+      - type: rewrite
+        source: /forgot-password
+        destination: /forgot-password.html
+      - type: rewrite
+        source: /reset-password
+        destination: /reset-password.html
       - type: rewrite
         source: /*
         destination: /index.html
