@@ -116,6 +116,7 @@ function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, cl
     <tr>
       <td style="padding:22px 12px 0;text-align:center;">
         <p style="font-size:11.5px;color:#a1a8b3;margin:0;line-height:1.6;">${escapeHtml(name)} &middot; ${escapeHtml(phone)} &middot; ${escapeHtml(address)}</p>
+        <p style="font-size:10.5px;color:#b7bec8;margin:6px 0 0;line-height:1.6;">You're receiving this email because you have an upcoming appointment with ${escapeHtml(name)}.</p>
       </td>
     </tr>
   </table>
@@ -140,7 +141,8 @@ export function reminderTemplate(r) {
     `  Reason:  ${r.appt_reason || 'General visit'}\n` +
     `  Where:   ${config.clinic.address}\n\n` +
     `Need to reschedule or cancel? Call us at ${config.clinic.phone}.\n\n` +
-    `See you soon,\n${config.clinic.name}`;
+    `See you soon,\n${config.clinic.name}\n\n` +
+    `---\nYou're receiving this email because you have an upcoming appointment with ${config.clinic.name}.`;
   const html = renderEmail({
     icon: '&#33;',
     accent: '#b45309',
