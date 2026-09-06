@@ -210,12 +210,17 @@ services:
         value: ""
       - key: SMTP_PASS
         sync: false
-      # Until a sending domain is verified in Resend, sandbox mode only
-      # allows "onboarding@resend.dev" as the from-address (and only
-      # delivers to the email your Resend account itself is registered
-      # under) — real patient delivery needs a verified domain there.
+      # MUST be an email verified in SendGrid (Settings > Sender
+      # Authentication > Single Sender Verification) — SendGrid rejects
+      # every send outright otherwise, same failure mode regardless of
+      # recipient. brightsmile.example (the previous value here) is a
+      # reserved example domain (RFC 2606) that can never be verified;
+      # confirmed by a direct POST to this service's /internal/send
+      # returning "The brightsmile.example domain is not verified."
+      # nbnabhay@gmail.com is already verified for local dev's SMTP path
+      # (see .env.example) — reused here so this only needs verifying once.
       - key: MAIL_FROM
-        value: "Bright Smile Dental <no-reply@brightsmile.example>"
+        value: "Bright Smile Dental <nbnabhay@gmail.com>"
       # Twilio SMS — optional, same fail-soft posture as SMTP above: leave
       # blank and SMS sending is silently disabled (emails keep working).
       # Auth is the main Auth Token, not an API Key SID/Secret pair — Twilio
