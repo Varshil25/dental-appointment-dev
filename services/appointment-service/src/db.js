@@ -76,3 +76,35 @@ await pool.query(`
 // databases (local + Render's Neon) — CREATE TABLE IF NOT EXISTS above is a
 // no-op against those, so the column needs its own idempotent migration.
 await pool.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS emailed_at TIMESTAMPTZ;`);
+
+// Reviews live here rather than in dentist-service for the same reason
+// invoices do (see above): 1:1 with an appointment row in this same
+// database, so a real FK + UNIQUE(appointment_id) is possible and cheaper
+// than a cross-service HTTP round-trip on every create — and creating one
+// already requires reading the appointment (to check status = 'completed'
+// and match the caller's contact info) anyway, which only this service can
+// do locally. dentist-service's public GET /:id/reviews composes this
+// service's per-dentist data over HTTP instead, the same way it already
+// does for schedule/future-booked/etc (see its appointmentServiceClient.js).
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS reviews (
+    id              SERIAL PRIMARY KEY,
+    appointment_id  INTEGER NOT NULL UNIQUE REFERENCES appointments(id),
+    patient_id      INTEGER NOT NULL,
+    dentist_id      INTEGER NOT NULL,
+    rating          INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment         TEXT,
+    status          TEXT NOT NULL DEFAULT 'visible', -- visible|hidden
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reviews_dentist ON reviews(dentist_id);
+  CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
+`);
+
+// review_requested_at guards the completed-status trigger against sending
+// the review-request email/SMS twice — see routes/appointments.js's
+// PATCH /:id/status — separately from the reviews table above, since a
+// review being submitted and a request having been *sent* are different
+// facts (a patient can ignore the email and never review at all).
+await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMPTZ;`);

@@ -58,6 +58,10 @@ app.use(
   forMethods(['POST', 'PATCH'], (req, res, next) => (req.path === '/lookup' ? next() : writeLimiter(req, res, next)))
 );
 app.use('/api/inquiries', forMethods(['POST'], writeLimiter));
+// Review submission doubles as a guessing oracle for (appointment_id,
+// contact) pairs, same as the appointments lookup above — same tighter
+// limiter, not the general write one.
+app.use('/api/reviews', forMethods(['POST'], lookupLimiter));
 // Only the public application-submission POST '/' needs this — the
 // approve/reject actions on the same prefix are admin-only writes already
 // gated by auth below, same distinction appointments draws for '/lookup'.
@@ -146,6 +150,15 @@ app.use('/api/reports', requireAuth, requireRole('admin'));
 // this app at all, so there's no patient-side invoice view either — only
 // the admin dashboard reads/writes these.
 app.use('/api/invoices', requireAuth, requireRole('admin'));
+
+// Reviews — POST '/' (public submission, reached from the review-request
+// email/SMS with no login) stays public, same self-service posture as
+// appointments' booking/lookup/reschedule/cancel; listing all reviews for
+// moderation and toggling visibility are admin-only. The public per-dentist
+// summary (GET /api/dentists/:id/reviews) lives under the dentists prefix,
+// already public by omission there — see that section above.
+app.get('/api/reviews', requireAuth, requireRole('admin'));
+app.patch('/api/reviews/:id/status', requireAuth, requireRole('admin'));
 
 // Admin-only account creation — auth-service also independently re-checks
 // the token itself (see its middleware/auth.js), so this is defense in

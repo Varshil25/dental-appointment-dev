@@ -63,6 +63,27 @@ export async function getDaySchedule(dentistId, dayStartISO, dayEndISO) {
   }
 }
 
+// Reviews (rating average, count, a page of visible ones) for one dentist —
+// backs the public GET /:id/reviews below. Unlike the other functions in
+// this file, this fails *soft*: it's read by patient-frontend's public
+// landing page, so an appointment-service hiccup should degrade to "no
+// rating shown yet" rather than break the whole dentists section.
+export async function getDentistReviews(dentistId, { page = 1, limit = 10 } = {}) {
+  const url = `${config.appointmentServiceUrl}/internal/reviews?dentistId=${dentistId}&page=${page}&limit=${limit}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`appointment-service responded ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('[dentist-service] could not load reviews:', err.message);
+    return { averageRating: null, totalCount: 0, page: 1, totalPages: 1, reviews: [] };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Cancels one appointment via appointment-service's own cancel route, so
 // the existing cancellation-email/SMS + reminder-voiding logic there runs
 // unchanged — this is a same-effect internal call, not a reimplementation.

@@ -54,6 +54,20 @@ export const api = {
   // Inquiries — general contact form, separate from booking.
   submitInquiry: (body) => request('/inquiries', { method: 'POST', body: JSON.stringify(body) }),
 
+  // Reviews — /review?appointment=<id>, reached from the review-request
+  // email/SMS sent when an appointment is marked completed. No login: the
+  // eligibility check is public (dentist name + date only, no patient
+  // contact info), and submission itself verifies identity via the same
+  // email-or-phone-on-file check as lookupAppointment above.
+  getReviewEligibility: (appointmentId) => request(`/appointments/${appointmentId}/review-eligibility`),
+  submitReview: (body) => request('/reviews', { method: 'POST', body: JSON.stringify(body) }),
+  // Public per-dentist rating summary — powers the "Our Dentists" cards and
+  // (optionally) a dentist's own profile view.
+  getDentistReviews: (dentistId, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/dentists/${dentistId}/reviews${qs ? `?${qs}` : ''}`);
+  },
+
   // Dentist applications — public self-application form at /join-as-dentist.
   // Reviewed by an admin in the staff dashboard; not readable from here.
   submitDentistApplication: (body) => request('/dentist-applications', { method: 'POST', body: JSON.stringify(body) }),

@@ -30,6 +30,11 @@ const routeTable = [
   // was expected. Confirmed via GET /api/invoices returning appointment
   // rows and GET /api/invoices/2 returning "appointment not found".
   ['/api/invoices', config.services.appointment, (path) => `/invoices${path}`],
+  // Same fixed-prefix rewrite as invoices above, same reason: reviews also
+  // shares appointment-service with appointments but is mounted at
+  // '/reviews' there, not '/' — learned from the invoices bug, applied
+  // here from the start instead of repeating it.
+  ['/api/reviews', config.services.appointment, (path) => `/reviews${path}`],
   ['/api/reminders', config.services.reminder, ''],
   ['/api/reports', config.services.report, ''],
   ['/api/clinic-profile', config.services.dentist, () => '/clinic-profile'],

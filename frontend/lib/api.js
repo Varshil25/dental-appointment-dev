@@ -148,6 +148,18 @@ export const api = {
     return res.blob();
   },
 
+  // Reviews — admin moderation view. Submission itself (POST /api/reviews)
+  // is public and only ever called from patient-frontend's /review page,
+  // not here.
+  listReviews: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+    ).toString();
+    return request(`/reviews${qs ? `?${qs}` : ''}`);
+  },
+  setReviewStatus: (id, status) =>
+    request(`/reviews/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+
   // Reports
   summary: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

@@ -6,8 +6,12 @@ import { getPatient } from '../clients/patientServiceClient.js';
 import { getDentist } from '../clients/dentistServiceClient.js';
 import { scheduleReminders, cancelReminders } from '../clients/reminderServiceClient.js';
 import { sendMail, sendSms } from '../clients/notificationServiceClient.js';
-import { bookingTemplate, cancellationTemplate, followUpTemplate, bookingSms, cancellationSms, followUpSms } from '../templates.js';
+import {
+  bookingTemplate, cancellationTemplate, followUpTemplate, reviewRequestTemplate,
+  bookingSms, cancellationSms, followUpSms, reviewRequestSms,
+} from '../templates.js';
 import { invalidateAll } from '../cache.js';
+import { contactMatches } from '../contactMatch.js';
 
 const router = Router();
 
@@ -85,8 +89,6 @@ router.get('/:id', async (req, res) => {
 // phone on file to match before returning anything. Same generic error for
 // "no such id" and "id exists but contact doesn't match" so a caller can't
 // use the response to enumerate which bookings exist.
-const normalizeForCompare = (s) => String(s).trim().toLowerCase().replace(/[\s().-]/g, '');
-
 router.post('/lookup', async (req, res) => {
   const { id, contact } = req.body;
   if (!id || !contact) return res.status(400).json({ error: 'id and contact (email or phone) are required' });
@@ -94,13 +96,40 @@ router.post('/lookup', async (req, res) => {
   const NOT_FOUND = { error: 'no matching appointment found — check your reference and contact details' };
   const appt = await getAppointment(id);
   if (!appt || !appt.patient_email) return res.status(404).json(NOT_FOUND);
-
-  const given = normalizeForCompare(contact);
-  const matchesEmail = appt.patient_email && normalizeForCompare(appt.patient_email) === given;
-  const matchesPhone = appt.patient_phone && normalizeForCompare(appt.patient_phone) === given;
-  if (!matchesEmail && !matchesPhone) return res.status(404).json(NOT_FOUND);
+  if (!contactMatches(appt, contact)) return res.status(404).json(NOT_FOUND);
 
   res.json(appt);
+});
+
+// Public, unauthenticated — lets the review page (patient-frontend's
+// /review?appointment=<id>) show context ("How was your visit with Dr. X on
+// [date]?") and gate the form (already reviewed / not completed yet)
+// *before* asking the patient to enter their email/phone, without leaking
+// anything beyond what's needed for that: no patient name/email/phone here,
+// unlike GET /:id above (which composes full contact info in and has no
+// caller-identity check — pre-existing, out of scope to tighten here, but
+// deliberately not the shape reused for this new public-by-design surface).
+router.get('/:id/review-eligibility', async (req, res) => {
+  const appt = await getAppointmentLocal(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'appointment not found' });
+
+  const { rows } = await pool.query('SELECT id FROM reviews WHERE appointment_id = $1', [appt.id]);
+  const alreadyReviewed = rows.length > 0;
+
+  let dentist = null;
+  try {
+    dentist = await getDentist(appt.dentist_id);
+  } catch (err) {
+    console.error('[appointment-service] could not load dentist for review-eligibility:', err.message);
+  }
+
+  res.json({
+    eligible: appt.status === 'completed' && !alreadyReviewed,
+    already_reviewed: alreadyReviewed,
+    appointment_status: appt.status,
+    dentist_name: dentist?.name ?? null,
+    start_time: appt.start_time,
+  });
 });
 
 // Book a new appointment.
@@ -244,6 +273,29 @@ router.patch('/:id/status', async (req, res) => {
       console.error('[appointment-service] failed to cancel reminders:', err.message)
     );
   }
+
+  // Review-request email/SMS, sent once per appointment regardless of how
+  // many times it's (re-)marked completed — review_requested_at (not the
+  // reviews table) is the guard, since a patient can ignore the request and
+  // never actually leave a review, and an admin correcting a mis-set
+  // no_show/booked back to completed shouldn't trigger a second send.
+  if (req.body.status === 'completed' && !existing.review_requested_at) {
+    try {
+      const [patient, dentist] = await Promise.all([
+        getPatient(existing.patient_id),
+        getDentist(existing.dentist_id),
+      ]);
+      if (patient && dentist) {
+        const composed = composeRow(existing, patient, dentist);
+        sendMail(patient.email, reviewRequestTemplate(composed)).catch(() => {});
+        if (patient.phone) sendSms(patient.phone, reviewRequestSms(composed)).catch(() => {});
+        await pool.query('UPDATE appointments SET review_requested_at = now() WHERE id = $1', [existing.id]);
+      }
+    } catch (err) {
+      console.error('[appointment-service] failed to send review request:', err.message);
+    }
+  }
+
   res.json(await getAppointment(existing.id));
 });
 

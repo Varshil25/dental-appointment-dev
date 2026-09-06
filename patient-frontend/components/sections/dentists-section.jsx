@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Stethoscope, ArrowRight } from 'lucide-react';
+import { Stethoscope, ArrowRight, Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { initials } from '@/lib/initials';
 import { MagicCard } from '@/components/ui/magic-card';
@@ -25,11 +25,20 @@ function DentistCardSkeleton() {
 export function DentistsSection() {
   const router = useRouter();
   const [dentists, setDentists] = useState(null);
+  const [reviewsByDentist, setReviewsByDentist] = useState({});
 
   useEffect(() => {
     api
       .listDentists()
-      .then((all) => setDentists(all.filter((d) => d.status !== 'inactive')))
+      .then((all) => {
+        const active = all.filter((d) => d.status !== 'inactive');
+        setDentists(active);
+        // One call per dentist, in parallel — fine at this list's size (a
+        // handful of dentists on a marketing landing page), and matches
+        // the public per-dentist endpoint this data actually comes from.
+        Promise.all(active.map((d) => api.getDentistReviews(d.id).then((r) => [d.id, r]).catch(() => [d.id, null])))
+          .then((pairs) => setReviewsByDentist(Object.fromEntries(pairs)));
+      })
       .catch(() => setDentists([]));
   }, []);
 
@@ -75,6 +84,15 @@ export function DentistsSection() {
                   <Stethoscope className="size-3.5" />
                   {d.specialty || 'General Dentistry'}
                 </p>
+                {reviewsByDentist[d.id]?.totalCount > 0 && (
+                  <p className="mt-1 flex items-center gap-1 text-sm">
+                    <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                    <span className="font-medium">{reviewsByDentist[d.id].averageRating}</span>
+                    <span className="text-muted-foreground">
+                      ({reviewsByDentist[d.id].totalCount} review{reviewsByDentist[d.id].totalCount === 1 ? '' : 's'})
+                    </span>
+                  </p>
+                )}
                 <Button
                   className="mt-6 w-full rounded-full"
                   variant="outline"

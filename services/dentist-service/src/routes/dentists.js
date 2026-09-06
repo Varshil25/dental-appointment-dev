@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { generateSlots } from '../slots.js';
-import { getTakenIntervals, getDaySchedule, getFutureBookedAppointments, cancelAppointment } from '../clients/appointmentServiceClient.js';
+import { getTakenIntervals, getDaySchedule, getFutureBookedAppointments, getDentistReviews, cancelAppointment } from '../clients/appointmentServiceClient.js';
 import { cached, invalidate } from '../cache.js';
 
 const router = Router();
@@ -67,6 +67,17 @@ router.get('/:id', async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM dentists WHERE id = $1', [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: 'dentist not found' });
   res.json(rows[0]);
+});
+
+// Public — powers the average-rating badge on patient-frontend's dentist
+// cards and a "recent reviews" list on a dentist's profile. Already
+// public-safe from appointment-service's side (first name only, visible-
+// status only — see reviewQueries.js's getDentistReviewSummary), so this
+// is a thin pass-through, not a place that needs its own redaction.
+router.get('/:id/reviews', async (req, res) => {
+  const { page, limit } = req.query;
+  const result = await getDentistReviews(req.params.id, { page: Number(page) || 1, limit: Number(limit) || 10 });
+  res.json(result);
 });
 
 router.put('/:id', async (req, res) => {

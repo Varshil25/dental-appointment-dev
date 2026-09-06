@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { config } from '../config.js';
 import { listAppointmentsLocal, composeNames } from '../queries.js';
+import { getDentistReviewSummary } from '../reviewQueries.js';
 import { hasConflict } from '../slots.js';
 import { scheduleReminders } from '../clients/reminderServiceClient.js';
 import { cached, invalidateAll } from '../cache.js';
@@ -204,6 +205,21 @@ router.get('/invoices/revenue-summary', async (req, res) => {
     );
     return { totalRevenue: Number(rows[0].revenue), paidInvoiceCount: Number(rows[0].n) };
   });
+  res.json(result);
+});
+
+// Used by dentist-service's public GET /:id/reviews (see that service's
+// appointmentServiceClient.js) — same "dentist-service composes another
+// service's data over HTTP" pattern as getFutureBookedAppointments/
+// getDaySchedule already there, just in the other direction (this time
+// appointment-service owns the data — see db.js's comment on why reviews
+// live here — and dentist-service is the one composing).
+router.get('/reviews', async (req, res) => {
+  const { dentistId, page, limit } = req.query;
+  if (!dentistId) return res.status(400).json({ error: 'dentistId is required' });
+  const result = await cached(`internal:reviews:${dentistId}:${page || 1}:${limit || 10}`, 15, () =>
+    getDentistReviewSummary(dentistId, { page: Number(page) || 1, limit: Number(limit) || 10 })
+  );
   res.json(result);
 });
 

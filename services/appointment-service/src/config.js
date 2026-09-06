@@ -13,6 +13,11 @@ export const config = {
   dentistServiceUrl: withScheme(process.env.DENTIST_SERVICE_URL) || 'http://localhost:4002',
   reminderServiceUrl: withScheme(process.env.REMINDER_SERVICE_URL) || 'http://localhost:4004',
   notificationServiceUrl: withScheme(process.env.NOTIFICATION_SERVICE_URL) || 'http://localhost:4005',
+  // Public patient-facing site — the review-request email/SMS links to
+  // <PATIENT_FRONTEND_URL>/review?appointment=<id>. Matches auth-service's
+  // FRONTEND_URL (same idea, different audience: that one links to the
+  // staff dashboard for password resets, this one to the public site).
+  patientFrontendUrl: process.env.PATIENT_FRONTEND_URL || 'http://localhost:3000',
   redisUrl: process.env.REDIS_URL || '',
   clinic: {
     name: process.env.CLINIC_NAME || 'Bright Smile Dental',

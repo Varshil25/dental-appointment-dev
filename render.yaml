@@ -130,6 +130,10 @@ services:
         value: https://reminder-service-55dd.onrender.com
       - key: NOTIFICATION_SERVICE_URL
         value: https://notification-service-18oo.onrender.com
+      # The review-request email/SMS (sent when an appointment is marked
+      # completed) links to <PATIENT_FRONTEND_URL>/review?appointment=<id>.
+      - key: PATIENT_FRONTEND_URL
+        value: https://patient-frontend-27om.onrender.com
       - key: CLINIC_NAME
         value: Bright Smile Dental
       - key: CLINIC_PHONE

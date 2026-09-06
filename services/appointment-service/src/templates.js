@@ -14,7 +14,7 @@ const escapeHtml = (s) =>
 // Table-based layout with inline styles throughout — the only markup style
 // that renders consistently across Gmail/Outlook/Apple Mail, none of which
 // can be relied on to support a <style> block or modern CSS layout.
-function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, closing, ctaLabel, footerNote }) {
+function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, closing, ctaLabel, ctaHref, footerNote }) {
   const { name, phone, address } = config.clinic;
 
   const rowItem = ([label, value, rowIcon]) => `
@@ -47,12 +47,15 @@ function renderEmail({ icon, accent, accentSoft, badge, heading, intro, rows, cl
 
   const rowsHtml = rows.map(rowItem).join(divider);
 
+  // ctaHref (an ordinary link, e.g. the review page) takes priority over
+  // the default "Call the clinic" tel: link most other templates use.
   const telHref = phone ? `tel:${String(phone).replace(/[^+\d]/g, '')}` : null;
-  const cta = ctaLabel && telHref
+  const href = ctaHref || telHref;
+  const cta = ctaLabel && href
     ? `
         <tr>
           <td style="padding:26px 0 0;text-align:center;">
-            <a href="${telHref}" style="display:inline-block;background:${accent};color:#ffffff;font-size:13.5px;font-weight:700;text-decoration:none;padding:12px 30px;border-radius:999px;">${escapeHtml(ctaLabel)}</a>
+            <a href="${href}" style="display:inline-block;background:${accent};color:#ffffff;font-size:13.5px;font-weight:700;text-decoration:none;padding:12px 30px;border-radius:999px;">${escapeHtml(ctaLabel)}</a>
           </td>
         </tr>`
     : '';
@@ -258,4 +261,41 @@ export function followUpTemplate(appt) {
     ctaLabel: 'Call the Clinic',
   });
   return { subject, text, html };
+}
+
+export function reviewRequestTemplate(appt) {
+  const reviewUrl = `${config.patientFrontendUrl}/review?appointment=${appt.id}`;
+  const subject = `How was your visit with ${appt.dentist_name}?`;
+  const text =
+    `Hi ${appt.patient_name},\n\n` +
+    `Thanks for visiting ${config.clinic.name} on ${fmt(appt.start_time)}. ` +
+    `We'd love to hear how it went with ${appt.dentist_name}.\n\n` +
+    `Leave a quick rating and review here (no account needed):\n${reviewUrl}\n\n` +
+    `Thank you,\n${config.clinic.name}\n\n` +
+    `---\nYou're receiving this email because you had an appointment with ${config.clinic.name}.`;
+  const html = renderEmail({
+    icon: '&#11088;',
+    accent: '#d97706',
+    accentSoft: '#fffbeb',
+    badge: 'Tell us how it went',
+    heading: `How was your visit, ${firstName(appt.patient_name)}?`,
+    intro: `We'd love to hear about your visit with ${appt.dentist_name} on ${fmt(appt.start_time)}.`,
+    rows: [
+      ['Dentist', appt.dentist_name, '&#129688;'],
+      ['Visit date', fmt(appt.start_time), '&#128197;'],
+    ],
+    closing: 'Takes less than a minute — no account or login needed.',
+    ctaLabel: 'Leave a Review',
+    ctaHref: reviewUrl,
+    footerNote: `You're receiving this email because you had an appointment with ${config.clinic.name}.`,
+  });
+  return { subject, text, html };
+}
+
+export function reviewRequestSms(appt) {
+  const reviewUrl = `${config.patientFrontendUrl}/review?appointment=${appt.id}`;
+  return (
+    `${config.clinic.name}: Hi ${firstName(appt.patient_name)}, how was your visit with ` +
+    `${appt.dentist_name}? Leave a quick review: ${reviewUrl}`
+  );
 }
