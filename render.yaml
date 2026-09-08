@@ -142,6 +142,15 @@ services:
         value: 12 Riverside Ave, Springfield
       - key: SEED_TOKEN
         generateValue: true
+      # Auto-complete cron (src/autoComplete.js) — flips a still-'booked'
+      # appointment to 'completed' once end_time + this many minutes of
+      # grace has passed. Both have code defaults (every 2 min, 5 min grace)
+      # matching the values below, so these two lines are optional — set
+      # explicitly here so they're visible/tunable without redeploying code.
+      - key: AUTO_COMPLETE_CRON
+        value: "*/2 * * * *"
+      - key: AUTO_COMPLETE_GRACE_MINUTES
+        value: "5"
 
   - type: web
     name: reminder-service

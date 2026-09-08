@@ -19,6 +19,11 @@ export const config = {
   // staff dashboard for password resets, this one to the public site).
   patientFrontendUrl: process.env.PATIENT_FRONTEND_URL || 'http://localhost:3000',
   redisUrl: process.env.REDIS_URL || '',
+  // Auto-complete cron (see autoComplete.js): how often it checks for
+  // still-'booked' appointments past their end_time, and how many minutes
+  // of grace it gives an admin to mark one 'no_show' themselves first.
+  autoCompleteCron: process.env.AUTO_COMPLETE_CRON || '*/2 * * * *',
+  autoCompleteGraceMinutes: Number(process.env.AUTO_COMPLETE_GRACE_MINUTES) || 5,
   clinic: {
     name: process.env.CLINIC_NAME || 'Bright Smile Dental',
     phone: process.env.CLINIC_PHONE || '+61 470375410',

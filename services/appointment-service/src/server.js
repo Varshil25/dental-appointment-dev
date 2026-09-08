@@ -6,6 +6,7 @@ import appointments from './routes/appointments.js';
 import invoices from './routes/invoices.js';
 import reviews from './routes/reviews.js';
 import internal from './routes/internal.js';
+import { startAutoCompleteScheduler } from './autoComplete.js';
 
 const app = express();
 app.use(cors());
@@ -29,4 +30,5 @@ app.use((err, _req, res, _next) => {
 
 app.listen(config.port, () => {
   console.log(`[appointment-service] listening on http://localhost:${config.port}`);
+  startAutoCompleteScheduler();
 });

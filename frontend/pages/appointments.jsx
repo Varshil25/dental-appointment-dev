@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { initials } from '@/lib/initials';
 import { useAppointmentActions } from '@/hooks/use-appointment-actions';
 import { StatusBadge } from '@/components/status-badge';
+import { AppointmentCountdown } from '@/components/appointment-countdown';
 import { RescheduleDialog } from '@/components/reschedule-dialog';
 import { AppointmentDetailDialog } from '@/components/appointment-detail-dialog';
 import { AppointmentsCalendar } from '@/components/appointments-calendar';
@@ -50,6 +51,26 @@ export default function AppointmentsPage() {
   const load = () =>
     api.listAppointments({ ...(filter === 'all' ? {} : { status: filter }), dentistId }).then(setAppts).finally(() => setLoading(false));
   useEffect(() => { load(); }, [filter, dentistId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Background refresh while any currently-loaded appointment is either
+  // in-progress or sitting in the auto-complete job's grace window — the
+  // countdown itself ticks locally (see AppointmentCountdown), but only a
+  // refetch can pick up the status flip appointment-service's cron job
+  // makes server-side once it actually auto-completes one. Stops polling
+  // once nothing in view is active, so an idle dashboard doesn't keep
+  // hitting the API.
+  useEffect(() => {
+    const now = Date.now();
+    const active = appts.some((a) => {
+      if (a.status !== 'booked') return false;
+      const start = new Date(a.start_time).getTime();
+      const end = new Date(a.end_time).getTime();
+      return now >= start && now < end + 7 * 60 * 1000; // in progress, or ended within the auto-complete grace window
+    });
+    if (!active) return;
+    const id = setInterval(load, 20000);
+    return () => clearInterval(id);
+  }, [appts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refreshes both views after a mutation — the list's own filtered fetch
   // and the calendar's range-bounded fetch are independent, so both need
@@ -160,7 +181,12 @@ export default function AppointmentsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{a.reason || '—'}</TableCell>
-                    <TableCell><StatusBadge status={a.status} /></TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={a.status} />
+                        <AppointmentCountdown appt={a} />
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" disabled={rowBusy} />}>

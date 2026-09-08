@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { fmtDateTime } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { StatusBadge } from '@/components/status-badge';
+import { AppointmentCountdown } from '@/components/appointment-countdown';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -27,6 +28,7 @@ export function AppointmentDetailDialog({ appt, open, onOpenChange, actions }) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{fmtDateTime(appt.start_time)}</span>
             <StatusBadge status={appt.status} />
+            <AppointmentCountdown appt={appt} />
           </div>
         </DialogHeader>
 

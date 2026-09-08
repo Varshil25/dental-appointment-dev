@@ -7,11 +7,13 @@ import { getDentist } from '../clients/dentistServiceClient.js';
 import { scheduleReminders, cancelReminders } from '../clients/reminderServiceClient.js';
 import { sendMail, sendSms } from '../clients/notificationServiceClient.js';
 import {
-  bookingTemplate, cancellationTemplate, followUpTemplate, reviewRequestTemplate,
-  bookingSms, cancellationSms, followUpSms, reviewRequestSms,
+  bookingTemplate, cancellationTemplate, followUpTemplate,
+  bookingSms, cancellationSms, followUpSms,
 } from '../templates.js';
 import { invalidateAll } from '../cache.js';
 import { contactMatches } from '../contactMatch.js';
+import { composeRow } from '../compose.js';
+import { updateAppointmentStatus } from '../statusUpdate.js';
 
 const router = Router();
 
@@ -30,16 +32,6 @@ function resolveTimes(body, dentist) {
   }
   if (end <= start) return { error: 'end must be after start' };
   return { startISO: start.toISOString(), endISO: end.toISOString() };
-}
-
-function composeRow(row, patient, dentist) {
-  return {
-    ...row,
-    patient_name: patient.name,
-    patient_email: patient.email,
-    patient_phone: patient.phone,
-    dentist_name: dentist.name,
-  };
 }
 
 // Wraps the parallel patient+dentist lookup every write route needs.
@@ -259,44 +251,16 @@ router.patch('/:id/cancel', async (req, res) => {
   res.json(updated);
 });
 
-// Update status: completed | no_show | booked.
+// Update status: completed | no_show | booked. Shared with the
+// auto-complete cron job (see statusUpdate.js/autoComplete.js) so a manual
+// and an automatic completion trigger identical downstream effects.
 router.patch('/:id/status', async (req, res) => {
   const existing = await getAppointmentLocal(req.params.id);
   if (!existing) return res.status(404).json({ error: 'appointment not found' });
   const allowed = ['booked', 'completed', 'no_show'];
   if (!allowed.includes(req.body.status))
     return res.status(400).json({ error: `status must be one of ${allowed.join(', ')}` });
-  await pool.query('UPDATE appointments SET status = $1 WHERE id = $2', [req.body.status, existing.id]);
-  await invalidateAll();
-  if (req.body.status !== 'booked') {
-    cancelReminders(existing.id).catch((err) =>
-      console.error('[appointment-service] failed to cancel reminders:', err.message)
-    );
-  }
-
-  // Review-request email/SMS, sent once per appointment regardless of how
-  // many times it's (re-)marked completed — review_requested_at (not the
-  // reviews table) is the guard, since a patient can ignore the request and
-  // never actually leave a review, and an admin correcting a mis-set
-  // no_show/booked back to completed shouldn't trigger a second send.
-  if (req.body.status === 'completed' && !existing.review_requested_at) {
-    try {
-      const [patient, dentist] = await Promise.all([
-        getPatient(existing.patient_id),
-        getDentist(existing.dentist_id),
-      ]);
-      if (patient && dentist) {
-        const composed = composeRow(existing, patient, dentist);
-        sendMail(patient.email, reviewRequestTemplate(composed)).catch(() => {});
-        if (patient.phone) sendSms(patient.phone, reviewRequestSms(composed)).catch(() => {});
-        await pool.query('UPDATE appointments SET review_requested_at = now() WHERE id = $1', [existing.id]);
-      }
-    } catch (err) {
-      console.error('[appointment-service] failed to send review request:', err.message);
-    }
-  }
-
-  res.json(await getAppointment(existing.id));
+  res.json(await updateAppointmentStatus(existing, req.body.status));
 });
 
 // Book a follow-up appointment linked to an existing one.
