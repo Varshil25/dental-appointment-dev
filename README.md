@@ -2,7 +2,11 @@
 
 A working prototype that replaces phone-call / paper / spreadsheet appointment
 management with a single system covering **booking, cancellation, rescheduling,
-follow-ups, automated email reminders, patient records, and admin reporting**.
+follow-ups, automated email + SMS reminders, patient records, billing/invoicing,
+patient reviews, dentist job applications, and admin reporting** — with a
+**public patient-facing site** for self-service booking and a separate
+**password + OTP-protected staff dashboard** (admin/doctor roles) for running
+the clinic.
 
 Built for the brief: *"Dental clinics lose time and revenue when patients miss
 appointments, cancel late, or when bookings are manually managed."*
@@ -21,6 +25,11 @@ appointments, cancel late, or when bookings are manually managed."*
 | **Follow-ups** | From a completed visit, book a linked follow-up appointment (with its own reminders + email). |
 | **Patient records** | Searchable patient list with contact details, notes, and full appointment history. |
 | **Admin reporting** | Dashboard with upcoming count, no-show rate, cancellation rate, reminders sent, status breakdown, and per-dentist load. |
+| **Staff login & roles** | Password + emailed 6-digit OTP login for staff. Two roles: **admin** (full access) and **doctor** (scoped to their own appointments/profile). Patients never get accounts — booking stays public. |
+| **Billing / invoicing** | Line-item invoices per appointment, downloadable as PDF, emailable to the patient with the PDF attached. |
+| **Patient reviews** | Patients can leave a review after a completed visit; admin moderates (approve/reject) before it's public. |
+| **Dentist job applications** | Public "join as a dentist" form; admin reviews and approves/rejects applicants. |
+| **Contact inquiries** | Public contact form; admin views, replies, and tracks status. |
 
 ---
 
@@ -28,29 +37,32 @@ appointments, cancel late, or when bookings are manually managed."*
 
 A microservices split of the original monolith — each domain owns its data
 in its own **Neon Postgres database**, talks to the others over plain HTTP,
-and sits behind a single API Gateway so the frontend still calls one
-relative `/api/*` origin with zero code changes.
+and sits behind a single API Gateway that also does JWT auth + role checks,
+so both frontends still call one relative `/api/*` origin with zero code
+changes.
 
 ```
-frontend (Next.js + shadcn/ui, static export)  ──/api──►  gateway (reverse proxy, :4000)
-                                              │
-        ┌───────────────┬───────────────┬────┼────────────────┬─────────────────┐
-        ▼               ▼               ▼    ▼                ▼                 ▼
-  patient-service  dentist-service  appointment-service  reminder-service  report-service
-     :4001             :4002             :4003               :4004            :4006
- (Neon db:        (Neon db:         (Neon db:           (Neon db:          (no DB —
-  patient_service)  dentist_service)  appointment_service) reminder_service) composes the
-                          │                 │                   │           others' data)
-                          └──── slots ◄─────┘                   │
-                          (taken/available)                     ▼
+patient-frontend (public booking site)   ─┐
+                                           ├──/api──►  gateway (reverse proxy +
+frontend (staff dashboard, login req'd)  ─┘            auth/RBAC, :4000)
+                                                          │
+        ┌───────────────┬───────────────┬────┬───────────┼──────┬─────────────────┐
+        ▼               ▼               ▼    ▼           ▼      ▼                 ▼
+  patient-service  dentist-service  appointment-service  reminder-service  auth-service  report-service
+     :4001             :4002             :4003               :4004           :4007          :4006
+ (Neon db:        (Neon db:         (Neon db:           (Neon db:          (Neon db:      (no DB —
+  patient_service)  dentist_service)  appointment_service, reminder_service)  auth_service)  composes the
+                          │            invoices, reviews)      │                             others' data)
+                          └──── slots ◄─────┘                  │
+                          (taken/available)                    ▼
                                                           notification-service
                                                                 :4005
-                                                          (nodemailer, no DB)
+                                                       (nodemailer + Twilio, no DB)
 ```
 
-- Each stateful service owns exactly one table and one **Neon Postgres
-  database** — no shared database, no cross-service SQL joins. All 4 live in
-  the same Neon *project* (Neon's free tier is one project) but as 4
+- Each stateful service owns its own table(s) in its own **Neon Postgres
+  database** — no shared database, no cross-service SQL joins. All 5 live in
+  the same Neon *project* (Neon's free tier is one project) but as 5
   separate *databases* within it, so they stay as isolated as separate
   SQLite files were.
 - Services that need another service's data call its HTTP API: dentist-service
@@ -58,30 +70,50 @@ frontend (Next.js + shadcn/ui, static export)  ──/api──►  gateway (rev
   `patient_id`/`dentist_id` against patient-/dentist-service before booking
   (and fails closed with `503` if it can't reach them — that HTTP check is
   now the only integrity guard, since the SQL foreign keys are gone);
-  report-service has no database of its own and composes the whole
+  auth-service validates a new doctor account against dentist-service the
+  same way; report-service has no database of its own and composes the whole
   `/reports/summary` response from the other services' APIs.
 - Reminders are decoupled from appointment-service's uptime: when
   appointment-service schedules/reschedules/cancels a reminder, it pushes a
   denormalized snapshot (patient email/name, dentist name, start time,
   reason) into reminder-service, so its cron loop never has to call back.
-- The **gateway** does pure prefix reverse-proxying (`/api/patients/*` →
-  patient-service, etc.) — no path rewriting, no business logic.
-- **Frontend** — Next.js (App Router) with shadcn/ui components, built as a
-  static export (`output: 'export'` in `next.config.mjs`) — fully
-  client-rendered, no server-side rendering or Server Actions, so it stays a
-  free static site rather than a paid always-on Node service. Next.js
-  doesn't support `rewrites()` together with static export, so `lib/api.js`
-  calls the gateway directly (`http://localhost:4000`) in local dev and a
-  relative `/api/*` path in production, where `render.yaml`'s static-site
-  route rewrite proxies it to the deployed gateway.
+- The **gateway** reverse-proxies `/api/*` to the owning service (some routes
+  path-rewritten, e.g. `/api/invoices` and `/api/reviews` both live inside
+  appointment-service) and additionally verifies the staff JWT + role
+  (`admin` / `doctor`) on every route that needs one — see
+  `services/gateway/src/server.js`. Patient-facing routes (booking, slot
+  lookup, patient self-service reschedule/cancel) stay fully public; almost
+  everything staff-only (patient list/edit, dentist management, reminders,
+  reports, invoices, reviews moderation, inquiries, dentist applications) is
+  gated.
+- **Two separate Next.js frontends**, both static exports calling the same
+  gateway:
+  - **`patient-frontend`** — public, unauthenticated: booking, manage/
+    reschedule/cancel an existing booking, "join as a dentist" application,
+    contact form, leave a review.
+  - **`frontend`** — the staff dashboard: password + emailed OTP login,
+    then patients/dentists/appointments/reminders/billing/reviews/inquiries/
+    clinic settings, scoped by role (a `doctor` only sees their own
+    appointments/profile; `admin` sees everything).
+  Both are built with `output: 'export'` (`next.config.mjs`) — fully
+  client-rendered, no server-side rendering or Server Actions, so each stays
+  a free static site rather than a paid always-on Node service. Next.js
+  doesn't support `rewrites()` together with static export, so each app's
+  `lib/api.js` calls the gateway directly (`http://localhost:4000`) in local
+  dev and a relative `/api/*` path in production, where `render.yaml`'s
+  static-site route rewrites proxy it to the deployed gateway.
 
 ### Data model
-Same as before, just split across services: `patients` (patient-service) ·
-`dentists` (dentist-service) · `appointments` (appointment-service; status:
-booked / completed / cancelled / no_show; optional `follow_up_of` link) ·
-`reminders` (reminder-service; per-appointment, per-offset, status: pending /
-sending / sent / failed / skipped, plus a denormalized patient/dentist/appt
-snapshot so it never needs to call appointment-service back).
+`patients` (patient-service) · `dentists` (dentist-service) · `appointments`
+(appointment-service; status: booked / completed / cancelled / no_show;
+optional `follow_up_of` link) · `invoices`/`invoice_items` (appointment-service)
+· `reviews` (appointment-service) · `reminders` (reminder-service;
+per-appointment, per-offset, status: pending / sending / sent / failed /
+skipped, plus a denormalized patient/dentist/appt snapshot so it never needs
+to call appointment-service back) · `users` (auth-service; staff accounts,
+role admin/doctor, doctor rows linked to a `dentist_id`) ·
+`dentist_applications` (auth-service; public "join as a dentist" submissions)
+· `inquiries` (dentist-service; public contact-form submissions).
 
 ---
 
@@ -92,7 +124,7 @@ snapshot so it never needs to call appointment-service back).
 ### 0. Create the Neon databases (one time)
 
 1. Create a Neon project (any region).
-2. Inside it, create **4 databases** — the Neon console's SQL editor or the
+2. Inside it, create **5 databases** — the Neon console's SQL editor or the
    `neonctl` CLI both work; via SQL editor, connect to the default database
    and run:
    ```sql
@@ -100,6 +132,7 @@ snapshot so it never needs to call appointment-service back).
    CREATE DATABASE dentist_service;
    CREATE DATABASE appointment_service;
    CREATE DATABASE reminder_service;
+   CREATE DATABASE auth_service;
    ```
 3. Grab a connection string per database from the Neon console (**Connect**
    → pick the database from the dropdown) — they're identical except for
@@ -119,7 +152,7 @@ Each service is independent — install and configure each the same way:
 ```bash
 cd services/<service-name>   # e.g. services/patient-service
 npm install
-cp .env.example .env         # then paste in DATABASE_URL for the 4 with one
+cp .env.example .env         # then paste in DATABASE_URL for the 5 with one
 npm start
 ```
 
@@ -133,10 +166,11 @@ Start them in this order so cross-service calls succeed once you seed data
 | patient-service | 4001 | yes → `patient_service` |
 | reminder-service | 4004 | yes → `reminder_service` |
 | appointment-service | 4003 | yes → `appointment_service` |
+| auth-service | 4007 | yes → `auth_service` |
 | report-service | 4006 | no |
 | gateway | 4000 | no |
 
-Each of the 4 stateful services creates its own table(s) automatically on
+Each of the 5 stateful services creates its own table(s) automatically on
 first boot (`CREATE TABLE IF NOT EXISTS`) — no separate migration step.
 
 Only `notification-service`'s `.env` needs the SMTP settings described
@@ -149,18 +183,32 @@ node scripts/seed-all.js
 ```
 Calls each service's real HTTP API in dependency order (dentists → patients →
 past appointments → upcoming appointments), loading the same realistic
-sample clinic the old monolith's `seed.js` did.
+sample clinic the old monolith's `seed.js` did — and also seeds one **admin**
+and one **doctor** staff account via auth-service (default credentials are in
+`scripts/seed-all.js`, overridable with the `SEED_ADMIN_EMAIL` /
+`SEED_ADMIN_PASSWORD` / `SEED_DOCTOR_EMAIL` / `SEED_DOCTOR_PASSWORD` env vars).
 
-### 3. Frontend (separate terminal)
+### 3. Frontends (two separate terminals)
+
+**Patient-facing site** (public — booking, manage booking, reviews, contact,
+join-as-dentist):
 ```bash
-cd frontend
+cd patient-frontend
 npm install
 npm run dev               # http://localhost:3000
 ```
 
-Open **http://localhost:3000**. In dev it calls the gateway directly at
-`:4000` (see the Architecture note above on why); in production it goes
-through `render.yaml`'s `/api/*` rewrite instead.
+**Staff dashboard** (requires the login above — password, then a 6-digit
+OTP emailed via notification-service):
+```bash
+cd frontend
+npm install
+npm run dev               # http://localhost:3001 (or whichever port is free)
+```
+
+In dev, both call the gateway directly at `:4000` (see the Architecture note
+above on why); in production each goes through its own static site's
+`/api/*` rewrite in `render.yaml` instead.
 
 Built with [Next.js](https://nextjs.org) (App Router, JavaScript) and
 [shadcn/ui](https://ui.shadcn.com) components on Tailwind CSS v4.
@@ -169,17 +217,18 @@ Built with [Next.js](https://nextjs.org) (App Router, JavaScript) and
 
 ## Deploying (Render + Neon)
 
-`render.yaml` at the repo root is a Render Blueprint defining all 7 backend
-services and the static frontend site, plus the env-var wiring between them.
-The frontend's `npm run build` runs `next build`, which — with
-`output: 'export'` set in `frontend/next.config.mjs` — emits a static site
-to `frontend/out/`, matching `render.yaml`'s `staticPublishPath: out`.
+`render.yaml` at the repo root is a Render Blueprint defining all 8 backend
+services and both static frontend sites, plus the env-var wiring between
+them. Each frontend's `npm run build` runs `next build`, which — with
+`output: 'export'` set in its `next.config.mjs` — emits a static site to
+`out/`, matching `render.yaml`'s `staticPublishPath: out` for that site.
 Push this repo to a Git host, create a new Blueprint in the Render dashboard
-pointing at it, and fill in the `sync: false` values it prompts for: the 4
-`DATABASE_URL`s (your Neon connection strings — same ones from step 0 above)
-and the notification-service SMTP values. Render's Blueprint schema changes
-over time — double-check the `fromService`/`property` fields in
-`render.yaml` against Render's current docs before deploying.
+pointing at it, and fill in the `sync: false` values it prompts for: the 5
+`DATABASE_URL`s (your Neon connection strings — same ones from step 0 above,
+including `auth_service`), the notification-service SMTP/Twilio values, and
+`auth-service`'s `JWT_SECRET`. Render's Blueprint schema changes over time —
+double-check the `fromService`/`property` fields in `render.yaml` against
+Render's current docs before deploying.
 
 ---
 
@@ -247,9 +296,17 @@ PATCH  /api/appointments/:id/reschedule
 PATCH  /api/appointments/:id/cancel
 PATCH  /api/appointments/:id/status              # completed | no_show | booked
 POST   /api/appointments/:id/follow-up
-GET    /api/reminders?appointmentId=
-POST   /api/reminders/:id/send                   # send now
-GET    /api/reports/summary?from=&to=
+GET    /api/reminders?appointmentId=              # staff only
+POST   /api/reminders/:id/send                    # staff only, send now
+GET    /api/reports/summary?from=&to=             # staff only
+POST   /api/auth/login          POST /api/auth/verify-otp   GET /api/auth/me
+POST   /api/auth/users                            # admin only, create staff account
+GET    /api/invoices?appointmentId=               # staff only
+POST   /api/invoices/:id/send-email               # staff only
+GET    /api/reviews             POST /api/reviews          # staff-only list, public submit
+GET    /api/inquiries           POST /api/inquiries        # staff-only list, public submit
+GET    /api/dentist-applications                  # staff only
+POST   /api/dentist-applications                  # public — "join as a dentist"
 ```
 
 ---
@@ -270,16 +327,22 @@ visit, on cancellation, and for follow-ups — consistent and timely, replacing
 ad-hoc phone calls.
 
 **Privacy.** This is a prototype, so it deliberately keeps PII minimal (name,
-email, phone, DOB, notes), stored in 4 separate Neon Postgres databases (one
-per owning service) reached over TLS (`sslmode=require`). For production the
-following would be required and are **out of scope here**: authentication &
-role-based access for staff, encryption in transit for inter-service HTTP
+email, phone, DOB, notes), stored in 5 separate Neon Postgres databases (one
+per owning service) reached over TLS (`sslmode=require`). Staff access is
+gated by password + OTP login and role checks at the gateway (see
+Architecture above). For production the following would still be required
+and are **out of scope here**: encryption in transit for inter-service HTTP
 calls (currently plain HTTP — fine within a private network, not over the
 open internet), audit logging, data-retention/consent controls, and
 jurisdiction-specific health-data compliance (e.g. HIPAA / GDPR). No card or
 clinical-imaging data is collected. Each service's `.env` (Neon connection
-string, SMTP secrets, seed token) is git-ignored (see root `.gitignore`).
+string, SMTP/Twilio secrets, JWT secret, seed token) is git-ignored (see root
+`.gitignore`).
 
-**Limitations / next steps.** No auth yet; single clinic/timezone (server-local);
-SMS reminders are wired up via Twilio (see "SMS setup" above) alongside email, using the same `channel` field; reminders
-are best-effort (a failed send is logged and can be retried via "Send now").
+**Limitations / next steps.** Single clinic/timezone (server-local); a
+doctor can flip their own dentist profile's `status` field when editing it,
+since the gateway doesn't strip that field from the proxied request body;
+reminders are admin-only (not yet scoped to a doctor's own patients); SMS
+reminders are wired up via Twilio (see "SMS setup" above) alongside email,
+using the same `channel` field; reminders are best-effort (a failed send is
+logged and can be retried via "Send now").
