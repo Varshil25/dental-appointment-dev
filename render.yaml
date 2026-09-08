@@ -105,6 +105,20 @@ services:
       # service's MAIL_FROM (the outgoing send-as address).
       - key: CLINIC_NOTIFY_EMAIL
         value: front-desk@example.com
+      # Cloudinary — dentist profile photo uploads (POST/DELETE
+      # /api/dentists/:id/photo, see services/dentist-service/src/
+      # cloudinary.js). Cloud name isn't sensitive on its own (it's baked
+      # into every returned image URL anyway), but API key/secret together
+      # can sign arbitrary uploads/deletes on this account, so those two are
+      # secrets like DATABASE_URL above — set via the Render dashboard, not
+      # this file. All three come from console.cloudinary.com's Dashboard
+      # tab (click "Reveal" next to API Secret).
+      - key: CLOUDINARY_CLOUD_NAME
+        value: dzsuesnb
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   - type: web
     name: appointment-service

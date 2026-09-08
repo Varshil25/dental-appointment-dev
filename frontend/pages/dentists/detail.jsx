@@ -6,6 +6,7 @@ import { DAY_LABELS } from '@/lib/days';
 import PhoneInput from '@/components/phone-input';
 import { StatusBadge } from '@/components/status-badge';
 import { DeactivateDentistDialog } from '@/components/deactivate-dentist-dialog';
+import { DentistPhotoUpload } from '@/components/dentist-photo-upload';
 import { TodaysScheduleCard } from '@/components/todays-schedule-card';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -138,6 +139,10 @@ export default function DentistDetailPage() {
             <CardDescription>Editable — changes apply immediately, including to future slot generation.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <DentistPhotoUpload
+              dentist={dentist}
+              onChanged={(updated) => { setDentist(updated); setForm((f) => ({ ...f, photo_url: updated.photo_url })); }}
+            />
             <div>
               <Label>Full name</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

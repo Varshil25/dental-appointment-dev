@@ -12,6 +12,14 @@ export const config = {
   appointmentServiceUrl: withScheme(process.env.APPOINTMENT_SERVICE_URL) || 'http://localhost:4003',
   notificationServiceUrl: withScheme(process.env.NOTIFICATION_SERVICE_URL) || 'http://localhost:4005',
   redisUrl: process.env.REDIS_URL || '',
+  // Cloudinary — dentist profile photo uploads (see src/cloudinary.js and
+  // POST/DELETE /:id/photo in routes/dentists.js). All three come from the
+  // Cloudinary dashboard (console.cloudinary.com), Dashboard tab.
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
   clinic: {
     name: process.env.CLINIC_NAME || 'Bright Smile Dental',
     phone: process.env.CLINIC_PHONE || '(555) 012-3456',

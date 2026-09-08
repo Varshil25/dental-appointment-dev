@@ -1,13 +1,47 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { pool } from '../db.js';
 import { generateSlots } from '../slots.js';
 import { getTakenIntervals, getDaySchedule, getFutureBookedAppointments, getDentistReviews, cancelAppointment } from '../clients/appointmentServiceClient.js';
 import { cached, invalidate } from '../cache.js';
+import { uploadDentistPhoto, deleteCloudinaryAsset } from '../cloudinary.js';
 
 const router = Router();
 
 const STATUSES = ['active', 'inactive'];
 const DAYS = [0, 1, 2, 3, 4, 5, 6]; // Sun..Sat, matches Date#getDay()
+
+const PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+// memoryStorage (not disk) since the file only ever needs to exist as a
+// Buffer long enough to stream straight to Cloudinary — no reason to touch
+// this service's local disk for it.
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: PHOTO_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!PHOTO_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error('only JPG, PNG, or WEBP images are allowed'));
+    }
+    cb(null, true);
+  },
+});
+
+// Wraps multer's callback-style middleware so a rejected file type or an
+// oversized file comes back as a clean 400 JSON error — multer surfaces
+// both fileFilter errors and its own MulterError (LIMIT_FILE_SIZE, etc.) via
+// this callback's `err` rather than throwing, so without this wrapper they'd
+// fall through to the generic error handler in server.js and 500 instead.
+function handlePhotoUpload(req, res, next) {
+  photoUpload.single('photo')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'image is too large — max 5MB' });
+    }
+    res.status(400).json({ error: err.message || 'invalid file upload' });
+  });
+}
 
 function validateHours(work_start, work_end) {
   if (!Number.isFinite(work_start) || !Number.isFinite(work_end) || work_start >= work_end)
@@ -150,6 +184,59 @@ router.put('/:id', async (req, res) => {
   );
   await invalidate('*');
   res.json({ ...rows[0], cancelled_count: cancelledCount });
+});
+
+// Upload/replace a dentist's profile photo. Admin-only — enforced at the
+// gateway (see services/gateway/src/server.js), same pattern as every other
+// dentist-mutation route there.
+router.post('/:id/photo', handlePhotoUpload, async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM dentists WHERE id = $1', [req.params.id]);
+  const dentist = rows[0];
+  if (!dentist) return res.status(404).json({ error: 'dentist not found' });
+  if (!req.file) return res.status(400).json({ error: 'a photo file is required (field name "photo")' });
+
+  let uploaded;
+  try {
+    uploaded = await uploadDentistPhoto(req.file.buffer);
+  } catch (err) {
+    console.error('[dentist-service] Cloudinary upload failed:', err.message);
+    return res.status(502).json({ error: 'photo upload failed — check your connection and try again' });
+  }
+
+  const previousPublicId = dentist.photo_public_id;
+  const { rows: updatedRows } = await pool.query(
+    'UPDATE dentists SET photo_url = $1, photo_public_id = $2 WHERE id = $3 RETURNING *',
+    [uploaded.secure_url, uploaded.public_id, dentist.id]
+  );
+  await invalidate('*');
+
+  // Clean up the OLD asset only after the new one is safely stored and the
+  // row updated — never delete-then-upload, which would leave the dentist
+  // with no photo at all if the Cloudinary upload above had failed. No-ops
+  // if this dentist had no previous photo (previousPublicId is null).
+  deleteCloudinaryAsset(previousPublicId);
+
+  res.json(updatedRows[0]);
+});
+
+// Remove a dentist's profile photo (falls back to the initials avatar on
+// every frontend that renders this dentist). Admin-only, same as upload.
+router.delete('/:id/photo', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM dentists WHERE id = $1', [req.params.id]);
+  const dentist = rows[0];
+  if (!dentist) return res.status(404).json({ error: 'dentist not found' });
+  if (!dentist.photo_url) return res.status(400).json({ error: 'this dentist has no photo to remove' });
+
+  const { rows: updatedRows } = await pool.query(
+    'UPDATE dentists SET photo_url = NULL, photo_public_id = NULL WHERE id = $1 RETURNING *',
+    [dentist.id]
+  );
+  await invalidate('*');
+  // Unlike the upload route's fire-and-forget cleanup, this endpoint's whole
+  // job IS the deletion, so it's awaited here.
+  await deleteCloudinaryAsset(dentist.photo_public_id);
+
+  res.json(updatedRows[0]);
 });
 
 // Weekly availability — one row per day-of-week (0=Sun..6=Sat).

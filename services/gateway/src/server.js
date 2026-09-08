@@ -115,6 +115,14 @@ app.post('/api/dentists', requireAuth, requireRole('admin'));
 app.put('/api/dentists/:id', requireAuth, requireOwnDentistOrAdmin);
 app.get('/api/dentists/:id/availability', requireAuth, requireOwnDentistOrAdmin);
 app.put('/api/dentists/:id/availability', requireAuth, requireOwnDentistOrAdmin);
+// Profile photo upload/removal — admin-only (stricter than the profile-edit
+// routes above, which a doctor can also do for their own account): this
+// spends real Cloudinary quota, and multipart request bodies pass through
+// this gateway unparsed (see proxyRoutes.js — express.json() is never
+// mounted globally here), so there's no body to inspect/scope by dentist_id
+// the way a JSON PUT could be — simplest correct gate is admin-only.
+app.post('/api/dentists/:id/photo', requireAuth, requireRole('admin'));
+app.delete('/api/dentists/:id/photo', requireAuth, requireRole('admin'));
 // Day schedule summary (Today's Schedule card) composes patient names in,
 // unlike the public slots endpoint above — same admin-or-own-account gate
 // as availability.

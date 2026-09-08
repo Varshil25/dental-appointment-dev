@@ -66,6 +66,33 @@ export const api = {
   getDentistAvailability: (id) => request(`/dentists/${id}/availability`),
   updateDentistAvailability: (id, days) =>
     request(`/dentists/${id}/availability`, { method: 'PUT', body: JSON.stringify({ days }) }),
+  // XMLHttpRequest, not fetch+request() above: fetch has no upload-progress
+  // event, and this is the one call in this file that needs one (see
+  // components/dentist-photo-upload.jsx). Also deliberately skips
+  // request()'s default 'Content-Type': 'application/json' header — the
+  // browser sets multipart/form-data with the correct boundary itself, and
+  // setting it manually here would omit that boundary and break parsing.
+  uploadDentistPhoto: (id, file, onProgress) =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/api/dentists/${id}/photo`);
+      const { Authorization } = authHeader();
+      if (Authorization) xhr.setRequestHeader('Authorization', Authorization);
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON error page, fall through */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+        reject(new Error(data.error || `Upload failed (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload — check your connection and retry'));
+      const formData = new FormData();
+      formData.append('photo', file);
+      xhr.send(formData);
+    }),
+  removeDentistPhoto: (id) => request(`/dentists/${id}/photo`, { method: 'DELETE' }),
   slots: (dentistId, date) => request(`/dentists/${dentistId}/slots?date=${date}`),
   // Auth-gated: composes patient names in, unlike `slots` above. Powers the
   // Today's Schedule card on the dentist detail page.

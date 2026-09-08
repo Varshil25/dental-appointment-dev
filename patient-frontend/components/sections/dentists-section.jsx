@@ -8,7 +8,7 @@ import { initials } from '@/lib/initials';
 import { MagicCard } from '@/components/ui/magic-card';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 function DentistCardSkeleton() {
@@ -75,6 +75,7 @@ export function DentistsSection() {
             >
               <div className="flex h-full flex-col">
                 <Avatar className="size-14 border border-border">
+                  <AvatarImage src={d.photo_url || undefined} alt={d.name} />
                   <AvatarFallback className="bg-accent text-accent-foreground text-lg font-semibold">
                     {initials(d.name)}
                   </AvatarFallback>

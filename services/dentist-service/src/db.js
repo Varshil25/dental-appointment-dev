@@ -32,6 +32,13 @@ await pool.query(`
 // idempotent across restarts, same as the rest of this file's migrations.
 await pool.query(`ALTER TABLE dentists ADD COLUMN IF NOT EXISTS phone TEXT;`);
 await pool.query(`ALTER TABLE dentists ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';`);
+// photo_url is what every reader (frontend, other services) uses. Cloudinary's
+// asset public_id is stored alongside it — not derivable from the URL alone
+// without fragile parsing — so an upload that replaces an existing photo
+// (or a removal) can delete the exact old Cloudinary asset by id instead of
+// leaving it orphaned (see src/cloudinary.js and routes/dentists.js).
+await pool.query(`ALTER TABLE dentists ADD COLUMN IF NOT EXISTS photo_url TEXT;`);
+await pool.query(`ALTER TABLE dentists ADD COLUMN IF NOT EXISTS photo_public_id TEXT;`);
 
 // Per-day-of-week schedule, replacing the single work_start/work_end pair
 // as the source of truth for slot generation (dentists.work_start/work_end

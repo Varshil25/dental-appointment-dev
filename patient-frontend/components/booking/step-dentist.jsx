@@ -5,7 +5,7 @@ import { Users, Stethoscope } from 'lucide-react';
 import { api } from '@/lib/api';
 import { initials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function StepDentist({ value, onChange, onDentistsLoaded }) {
@@ -85,6 +85,7 @@ export function StepDentist({ value, onChange, onDentistsLoaded }) {
               )}
             >
               <Avatar className="size-11 border border-border">
+                <AvatarImage src={d.photo_url || undefined} alt={d.name} />
                 <AvatarFallback className="bg-secondary text-sm font-semibold">{initials(d.name)}</AvatarFallback>
               </Avatar>
               <span>
