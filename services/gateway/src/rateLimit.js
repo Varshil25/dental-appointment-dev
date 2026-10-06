@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { verifyBearer } from './auth.js';
 
 // No auth layer exists anywhere in this system yet, so every public,
 // unauthenticated write/lookup endpoint the patient-facing site exposes
@@ -19,6 +20,9 @@ const jsonLimitHandler = (_req, res) => {
 export const writeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
+  // Staff dashboard writes (status changes, reschedules) share these
+  // prefixes but are already authenticated — see generalLimiter below.
+  skip: (req) => verifyBearer(req) !== null,
   standardHeaders: true,
   legacyHeaders: false,
   message: undefined,
@@ -37,10 +41,15 @@ export const lookupLimiter = rateLimit({
 
 // Broad safety net across all of /api/*, generous enough to never bother a
 // real browsing session (dozens of GETs per page load between clinic
-// profile, dentists, and slots).
+// profile, dentists, and slots). Skipped for requests carrying a valid
+// staff JWT: the admin dashboard makes many calls per page plus a 20s
+// poll on the appointments view, and its traffic can arrive through the
+// frontend's /api/* rewrite sharing one upstream IP — so signed-in staff
+// were burning through this anonymous-abuse budget and getting 429s.
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
+  skip: (req) => verifyBearer(req) !== null,
   standardHeaders: true,
   legacyHeaders: false,
   handler: jsonLimitHandler,

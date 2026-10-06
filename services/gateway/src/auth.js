@@ -15,7 +15,7 @@ import { config } from './config.js';
 // token_version against the database on every call, so the frontend
 // catches a revoked session the next time it loads a page — see that
 // route for the actual enforcement point.
-function verifyBearer(req) {
+export function verifyBearer(req) {
   const header = req.get('Authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return null;
